@@ -1,8 +1,20 @@
+# Typing protocols
+from typing import Optional, Protocol
+
+class TextAndButtonsDataclass(Protocol):
+    text: str
+    buttons: Optional[list[list[tuple[str, str]]]]
+
+
 from aiogram import html
 
-home_button = [
+home_button = ('↩️ На главную', 'home')
+settings_button = ('⚙️ Настройки', 'cl_settings')
+settings_back_button = ('↩️ Назад', 'cl_settings')
+
+home_button_markup = [
     [
-        ('↩️ На главную', 'home'),
+        home_button,
     ],
 ]
 
@@ -19,39 +31,115 @@ class wc_create_class1:
     text = 'Дайте имя классу'
 
 class wc_create_class2:
-    text = 'Отлично, ваш класс успешно создан! Пожалуйста, назовите первую группу в классе'
+    text = 'Напишите свое имя'
 
 class wc_create_class3:
-    text = 'Отлично, группа создана, а вы - уже в классе! Приглашайте своих одноклассников при помощи кнопки "Добавить"'
-    buttons = home_button
+    text = 'Класс создан. Приглашайте своих одноклассников при помощи кнопки "Добавить"'
+    buttons = home_button_markup
+
 
 class wc_join_class:
-    text = 'Чтобы вступить в класс, скиньте ваш айди любому участнику класса, а он добавит вас через кнопку "Добавить".\n\nВаш айди: '\
-            + html.code('{user_id}')
-    buttons = home_button
+    text = 'Чтобы вступить в класс, скиньте ваши айди любому участнику класса, а он добавит вас через кнопку "Добавить".\n\nВаш айди: '\
+            + html.code('{user_id}\n') + 'Айди чата: ' + html.code('{chat_id}')
+    buttons = home_button_markup
+
 
 class home:
-    text = html.bold('Привет, {user_name}!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
+    text = html.bold('👋 Привет, {user_name} ({current_class} {current_group})!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
     buttons = [
         [
-            ('📆 ДЗ на завтра', 'tommorrow'),
+            ('📆 ДЗ', 'hw'),
+            ('🗓️ Расписание', 'schedule')
         ],
         [
-            ('➕ Добавить', 'cl_add_member'),
+            settings_button,
         ]
     ]
+
+
+class cl_settings:
+    text = 'Настройки класса ' + html.bold('{current_class}\n\n') + 'Кол-во участников: {cl_members_num}\nГруппы: {cl_groups_list}'
+    buttons = [
+        [
+            ('👤 Участники', 'cl_members'),
+            ('👥 Группы', 'cl_groups')
+        ],
+        [
+            home_button
+        ]
+    ]
+
+class cl_members:
+    text = 'Участники класса ' + html.bold('{current_class}') + ':\n\n{cl_members_text}'
+    buttons = [
+        [
+            ('➕ Добавить', 'cl_add_member')
+        ],
+        [
+            settings_back_button
+        ]
+    ]
+
 
 class cl_add_member1:
     text = 'Напишите айди человека, которого вы хотите добавить в класс'
 
 class cl_add_member2:
-    text = 'Напишите (точное, вплоть до регистра!) название группы, в которую вы хотите добавить нового участника'
+    text = 'Напишите имя участника, которого вы добавляете'
 
 class cl_add_member3:
-    text = 'Участник успешно добавлен в класс {current_class}'
-    buttons = home_button
+    text = 'Участник успешно добавлен в класс ' + html.bold('{current_class}')
+    buttons = [
+        [
+            ('👤 Посмотреть в участниках', 'cl_members'),
+        ],
+        [
+            settings_button,
+            home_button
+        ]
+    ]
 
-class tommorrow:
-    text = 'Домашнее задание на завтра'
-    buttons = home_button
+
+class cl_groups:
+    text = 'Текущие группы:\n\n{cl_groups_members_text}'
+    buttons = [
+        [
+            ('➕ Создать', 'cl_groups_create'),
+            ('✍️ Изменить', 'cl_groups_edit'),
+            ('✖️ Удалить', 'cl_groups_delete')
+        ],
+        [
+            settings_back_button
+        ]
+    ]
+
+
+class hw:
+    text = 'Домашнее задание'
+    buttons = [
+        [
+            ('⬅️', 'hw_left'),
+            ('📖', 'hw_open'),
+            ('✅', 'hw_complete'),
+            ('➡️', 'hw_right')
+        ],
+        [
+            ('✍️ Записать', 'hw_write'),
+            home_button,
+        ]
+    ]
     
+
+class schedule:
+    text = 'Расписание\nВ разработке'
+    buttons = [
+        [
+            ('⬅️', 'schedule_left'),
+            ('ℹ️', 'schedule_info'),
+            ('➡️', 'schedule_right')
+        ],
+        [
+            ('⚙️ Изменить расписание', 'schedule_settings'),
+            home_button
+        ]
+    ]
