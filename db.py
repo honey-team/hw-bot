@@ -1,10 +1,26 @@
-from optparse import Option
-from tokenize import group
 from typing import Any, Optional, overload
 from aiosqlite import connect
 from ujson import loads, dumps
 
+__all__ = (
+    'init_all',
+    'create_member',
+    'create_class',
+    'create_group',
+    'get_members',
+    'get_class',
+    'get_group',
+    'get_groups_by_ids',
+    'edit_member',
+    'edit_class',
+    'edit_group',
+    'delete_group',
+    'assign_to_group',
+    'unassign_to_group',
+    'full_reset'
+)
 
+# Basic functions
 path = 'data.db'
 
 def format_values(values: dict[str, Any]) -> dict[str, Any]:
@@ -31,7 +47,7 @@ async def insert_into(table_name: str, **values: Any):
 
 def where(**data: Any) -> str:
     data = format_values(data)
-    return f'WHERE {' AND '.join([f'{k}={v}' for k, v in data.items() if v is not None])}' if data else ''
+    return f'WHERE {' AND '.join([f'{k}={v}' for k, v in data.items()])}' if data else ''
 
 def values(**data: Any) -> str:
     data = format_values(data)
@@ -65,188 +81,158 @@ async def delete_from(table_name: str, *additional: str) -> list[dict[str, Any]]
         await conn.commit()
     return to_delete
 
-async def get_max(table_name: str, column_name: str, *additional: str):
+async def get_next_id(table_name: str, *additional: str):
     async with connect(path) as conn:
         conn.row_factory = __dict_factory
-        print(sql := f'SELECT MAX({column_name}) FROM {table_name} {' '.join(additional)}')
+        print(sql := f'SELECT MAX(id) FROM {table_name} {' '.join(additional)}')
         async with conn.execute(sql) as cur:
             r = await cur.fetchone()
-    return r
-        
+    return int(x) + 1 if r and (x := r.get('MAX(id)')) else 1
+#
+
+# Init tables
 async def init_members():
     await create_table_ine(
         'members',
-        'user_id long',
-        'name text',
+        'id int',
         'class_id int',
+        'name text',
         'groups_ids text'
     )
-
-
-async def create_member(id: int, class_id: int, name: str, group_id: Optional[int] = None):
-    if not group_id: group_id = (await get_general_group(class_id))['group_id']
-    return await insert_into(
-        'members',
-        user_id=id,
-        name=name,
-        class_id=class_id,
-        groups_ids=f'[{group_id}]'
-    )
-
-
-async def assign_to_group(user_id: int, group_id: int):
-    mb = await get_member(user_id)
-    await update('members', values(
-        groups_ids=dumps(loads(mb['groups_ids']) + [group_id])
-    ))
-    
-async def unassign_to_group(user_id: int, group_id: int):
-    mb = await get_member(user_id)
-    await update('members', values(
-        groups_ids=dumps(loads(mb['groups_ids']) - [group_id])
-    ))
-
-async def get_all_members(id: Optional[int] = None, class_id: Optional[int] = None, group_id: Optional[int] = None):
-    return await get_all_by('members', where(
-        user_id=id,
-        class_id=class_id,
-        group_id=group_id
-    ))
-    
-
-async def get_member(id: int, class_id: Optional[int] = None, group_id: Optional[int] = None) -> dict[str, int]:
-    return await get_one_by('members', where(
-        user_id=id,
-        class_id=class_id,
-        group_id=group_id
-    ))
-
-async def delete_members(id: Optional[int] = None, class_id: Optional[int] = None, group_id: Optional[int] = None) -> list[dict[str, int]]:
-    return await delete_from('members', where(
-        user_id=id,
-        class_id=class_id,
-        group_id=group_id
-    ))
 
 async def init_classes():
     await create_table_ine(
         'classes',
-        'class_id int',
-        'name text'
-    )
-
-async def create_class(name: str, user_id: int, member_name: str):
-    try:
-        _max_i = int(await get_max('classes', 'class_id').get('class_id', 0))
-    except:
-        _max_i = 0
-    cl = await insert_into(
-        'classes',
-        class_id=_max_i + 1,
-        name=name
-    )
-    await create_general_group(cl['class_id'], user_id, member_name)
-    return cl
-
-async def get_class(class_id: int, name: Optional[str] = None):
-    return await get_one_by('classes', where(
-        class_id=class_id,
-        name=name
-    ))
-    
-async def init_subjects():
-    await create_table_ine(
-        'subjects',
-        'class_id int',
-        'groups_ids text',
+        'id int',
         'name text',
-        'schedule text' # 1112 means 1 - monday; 1, 2 classes, 9 - one by two weeks at thursday (2)
+        'ggid int',
+        'groups_ids text'
     )
 
 async def init_groups():
     await create_table_ine(
         'groups',
-        'class_id int',
-        'group_id int',
-        'name text',
-        'general bool'
-    )
-
-async def create_group(class_id: int, name: str, user_id: int, general: bool = False):
-    class_id = int(class_id)
-    try:
-        _max_i = int(await get_max('groups', 'group_id').get('group_id', 0))
-    except:
-        _max_i = 0
-    gr = await insert_into(
-        'groups',
-        class_id=class_id,
-        group_id=_max_i + 1,
-        name=name,
-        general=general
-    )
-    await assign_to_group(user_id, gr['group_id'])
-    return gr
-
-async def create_general_group(class_id: int, user_id: int, member_name: str):
-    try:
-        _max_i = int(await get_max('groups', 'group_id').get('group_id', 0))
-    except:
-        _max_i = 0
-    await create_member(user_id, class_id, member_name, _max_i + 1)
-    return await create_group(class_id, '', user_id, True)
-
-
-async def get_all_groups(class_id: int, group_id: Optional[int] = None, name: Optional[str] = None, general: Optional[bool] = None) -> dict[str, str | int]:
-    return await get_all_by('groups', where(
-        class_id=class_id,
-        group_id=group_id,
-        name=name,
-        general=general
-    ))
-
-async def get_group(class_id: int, group_id: Optional[int] = None, name: Optional[str] = None) -> dict[str, int | str]:
-    return await get_one_by('groups', where(
-        class_id=class_id,
-        group_id=group_id,
-        name=name
-    ))
-
-async def get_general_group(class_id: int):
-    return await get_one_by('groups', where(
-        class_id=class_id,
-        general=True
-    ))
-
-async def delete_group(class_id: Optional[int] = None, group_id: Optional[int] = None, name: Optional[str] = None) -> dict[str, int | str]:
-    if group_id:
-        await delete_members(group_id=group_id)
-    
-    return await delete_from('groups', where(
-        class_id=class_id,
-        group_id=group_id,
-        name=name
-    ))
-
-async def init_hw():
-    await create_table_ine(
-        'hw',
-        'class_id int',
-        'group_id int',
-        'text text',
-        'files text'
+        'id int',
+        'name text'
     )
 
 async def init_all():
     await init_members()
     await init_classes()
-    await init_subjects()
     await init_groups()
-    await init_hw()
+#
 
-def get_groups_from_dict(member: dict[str, Any]):
-    return loads(member['groups_ids'])
+# Create
+async def create_member(user_id: int, class_id: int, name: str, groups_ids: list[int] = []):
+    return await insert_into(
+        'members',
+        id=user_id,
+        class_id=class_id,
+        name=name,
+        groups_ids=dumps(groups_ids)
+    )
+
+async def create_class(name: str):
+    class_id = await get_next_id('classes')
+    
+    gg = await create_group(class_id)
+    ggid = gg['id']
+    
+    return await insert_into(
+        'classes',
+        id=class_id,
+        name=name,
+        ggid=ggid,
+        groups_ids='[]'
+    )
+
+async def create_group(class_id: int, name: str = ''):
+    group_id = await get_next_id('groups')
+    
+    if name:
+        groups_ids = (await get_class(class_id))['groups_ids']
+        await edit_class(class_id, groups_ids=groups_ids + [group_id])
+    return await insert_into(
+        'groups',
+        id=group_id,
+        name=name
+    )
+#
+
+# Get
+async def get_members(user_id: Optional[int] = None, class_id: Optional[int] = None, name: Optional[str] = None, groups_ids: Optional[list[int]] = None):
+    m = await get_all_by('members', where(
+        id=user_id,
+        class_id=class_id,
+        name=name,
+        groups_ids=dumps(groups_ids) if groups_ids is not None else None
+    ))
+    for i in m:
+        i['groups_ids'] = loads(i['groups_ids'])
+    return m
+
+async def get_class(class_id: Optional[int] = None, name: Optional[str] = None, ggid: Optional[int] = None, groups_ids: Optional[list[int]] = None):
+    c = await get_one_by('classes', where(
+        id=class_id,
+        name=name,
+        ggid=ggid,
+        groups_ids=dumps(groups_ids) if groups_ids is not None else None
+    ))
+    c['groups_ids'] = loads(c['groups_ids'])
+    return c
+
+async def get_group(group_id: Optional[int] = None, name: Optional[str] = None):
+    return await get_one_by('groups', where(
+        id=group_id,
+        name=name
+    ))
+
+async def get_groups_by_ids(groups_ids: list[int]):
+    return [(await get_group(i)) for i in groups_ids]
+#
+
+# Edit
+async def edit_member(user_id: int, name: Optional[str] = None, groups_ids: Optional[list[int]] = None):
+    await update('members', values(
+            name=name,
+            groups_ids=dumps(groups_ids) if groups_ids is not None else None
+        ),
+        where(id=user_id)
+    )
+
+async def edit_class(class_id: int, name: Optional[str] = None, groups_ids: Optional[list[int]] = None):
+    await update('classes', values(
+            name=name,
+            groups_ids=dumps(groups_ids) if groups_ids is not None else None
+        ),
+        where(id=class_id)
+    )
+
+async def edit_group(group_id: int, name: str):
+    await update('groups', values(name=name), where(id=group_id))
+#
+
+# Delete
+async def delete_group(group_id: Optional[int] = None, name: Optional[str] = None):
+    return await delete_from('groups', where(
+            group_id=group_id,
+            name=name
+        )
+    )
+#
+
+# Utils
+async def assign_to_group(user_id: int, group_id: int):
+    old_groups_ids = (await get_members(user_id))[0]['groups_ids']
+    new_groups_ids = old_groups_ids + [group_id]
+    await edit_member(user_id, groups_ids=new_groups_ids)
+
+async def unassign_to_group(user_id: int, group_id: int):
+    groups_ids: list[int] = (await get_members(user_id))[0]['groups_ids']
+    if group_id in groups_ids:
+        groups_ids.remove(group_id)
+    await edit_member(user_id, groups_ids=groups_ids)
 
 def full_reset():
-    with open(path, 'w') as f:
-        f.write("")
+    with open(path, 'w') as f: f.write('') 
+#
