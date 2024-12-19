@@ -80,13 +80,10 @@ class cl_members:
         ]
     ]
 
-
 class cl_add_member1:
     text = 'Напишите айди человека, которого вы хотите добавить в класс'
-
 class cl_add_member2:
     text = 'Напишите имя участника, которого вы добавляете'
-
 class cl_add_member3:
     text = 'Участник успешно добавлен в класс ' + html.bold('{current_class}')
     buttons = [
@@ -115,16 +112,45 @@ class cl_groups:
 
 class cl_groups_create1:
     text = 'Напишите название группы'
-
 class cl_groups_create2:
     text = 'На отдельных строчках напишите имена тех, кого хотите добавить в группу (в будущем можно изменить)'
-
 class cl_groups_create3:
-    text = 'Группа {ctx.gc.grn} создана!'
+    text = 'Группа ' + html.bold('{ctx.g}') + ' создана!'
     buttons = [
         [
             ('👥 Посмотреть в группах', 'cl_groups'),
-            settings_back_button,
+        ],
+        [
+            settings_button,
+            home_button
+        ]
+    ]
+
+class cl_groups_edit1:
+    text = 'Введите название группы, которую хотите изменить'
+class cl_groups_edit2:
+    text = 'Что вы хотите изменить в группе ' + html.bold('{ctx.g}')
+    buttons = [ [
+            ('✍️ Название', 'cl_groups_edit_name'),
+            ('👤 Участники', 'cl_groups_edit_members'),
+        ],
+        [
+            ('Назад', 'cl_groups'),
+            settings_button,
+            home_button
+        ]
+    ]
+
+class cl_groups_edit_name1:
+    text = 'Введите новое название'
+class cl_groups_edit_name2:
+    text = 'Группа переименована в ' + html.bold('{ctx.g}')
+    buttons = [
+        [
+            ('👥 Посмотреть в группах', 'cl_groups'),
+        ],
+        [
+            settings_button,
             home_button
         ]
     ]

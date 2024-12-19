@@ -7,7 +7,15 @@ from aiogram import Bot, Dispatcher, html
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    KeyboardButton
+)
 
 from config import *
 from db import *
@@ -29,7 +37,7 @@ def generate_markup(dataclass: TextAndButtonsDataclass) -> InlineKeyboardMarkup:
     except AttributeError:
         return None
 
-async def format_text(txt: str, message: Optional[Message | CallbackQuery] = None, ctx_gc_grn: Optional[str] = None) -> str:
+async def format_text(txt: str, message: Optional[Message | CallbackQuery] = None, ctx_g: Optional[str] = None) -> str:
     memb = x[0] if (x := await get_members(message.from_user.id)) else None
     cl = await get_class(memb['class_id']) if memb else None
     if memb:
@@ -72,7 +80,7 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         'cl_groups_members_text': groups_text,
         'cl_members_num': members_count,
         'cl_groups_list': ', '.join(groups_list) if groups_list else 'нет',
-        'ctx.gc.grn': ctx_gc_grn or 'ошибка'
+        'ctx.g': ctx_g or 'ошибка'
     }
     
     for k, v in general_info.items():
@@ -87,17 +95,22 @@ async def command_start_handler(message: Message) -> None:
     else:
         await message.answer(await format_text(welcome.text, message), reply_markup=generate_markup(welcome))
 
-waiting_for_class_name = []
-waiting_for_name_of_class_creator = []
-create_class_names = {}
+w_wc_cc_class_name = []
+w_wc_cc_creator_name = []
+wc_cc_class_name = {}
 
-waiting_for_member_id = []
-waiting_for_name = []
-add_member_ids = {}
+w_cl_am_member_id = []
+w_cl_am_name = []
+cl_am_member_id = {}
 
-waiting_for_group_name = []
-waiting_for_group_members = []
-add_group_names = {}
+w_cl_gc_name = []
+w_cl_gc_members = []
+cl_gc_name = {}
+
+w_cl_ge_name = []
+cl_ge_id = {}
+
+w_cl_ge_n_name = []
 
 
 # Homework
@@ -106,9 +119,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     async def __edit(dcls: TextAndButtonsDataclass):
         await callback_query.message.edit_text(await format_text(dcls.text, callback_query), reply_markup=generate_markup(dcls))
 
+    user_id = callback_query.from_user.id
     match callback_query.data:
         case 'home':
-            if await get_members(callback_query.from_user.id):
+            if await get_members(user_id):
                 await __edit(home)
             else:
                 await __edit(welcome)
@@ -118,7 +132,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(schedule)
         case 'wc_create_class':
             await __edit(wc_create_class1)
-            waiting_for_class_name.append(callback_query.from_user.id)
+            w_wc_cc_class_name.append(user_id)
         case 'wc_join_class':
             await __edit(wc_join_class)
         case 'cl_settings':
@@ -127,68 +141,90 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(cl_members)
         case 'cl_add_member':
             await __edit(cl_add_member1)
-            waiting_for_member_id.append(callback_query.from_user.id)
+            w_cl_am_member_id.append(user_id)
         case 'cl_groups':
             await __edit(cl_groups)
         case 'cl_groups_create':
             await __edit(cl_groups_create1)
-            waiting_for_group_name.append(callback_query.from_user.id)
+            w_cl_gc_name.append(user_id)
+        case 'cl_groups_edit':
+            cl = await get_class((await get_members(user_id))[0]['class_id'])
+            await callback_query.message.answer(await format_text(cl_groups_edit1.text, callback_query), reply_markup=ReplyKeyboardMarkup(keyboard=[
+                [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
+            ]))
+            w_cl_ge_name.append(user_id)
+        case 'cl_groups_edit_name':
+            await __edit(cl_groups_edit_name1)
+            w_cl_ge_n_name.append(user_id)
 
 @dp.message()
 async def echo_handler(message: Message) -> None:
+    
     async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
     
     user_id = message.from_user.id
+    memb = x[0] if (x := await get_members(user_id)) else None
 
     # Create class
-    if user_id in waiting_for_class_name:
-        create_class_names[user_id] = message.text
+    if user_id in w_wc_cc_class_name:
+        wc_cc_class_name[user_id] = message.text
         await __answer(wc_create_class2)
-        waiting_for_class_name.remove(user_id)
-        waiting_for_name_of_class_creator.append(user_id)
-    elif user_id in waiting_for_name_of_class_creator:
-        cl = await create_class(create_class_names[user_id])
+        w_wc_cc_class_name.remove(user_id)
+        w_wc_cc_creator_name.append(user_id)
+    elif user_id in w_wc_cc_creator_name:
+        cl = await create_class(wc_cc_class_name[user_id])
         await create_member(user_id, cl['id'], message.text)
         await __answer(wc_create_class3)
-        waiting_for_name_of_class_creator.remove(user_id)
+        w_wc_cc_creator_name.remove(user_id)
     #
 
     # Add member
-    elif user_id in waiting_for_member_id:
+    elif user_id in w_cl_am_member_id:
         try:
             _id = int(message.text)
         except:
             await message.answer('Пожалуйста, пишите айди участника без лишних символов, кроме цифр.\n' + cl_add_member1.text)
             return
-        add_member_ids[user_id] = _id
+        cl_am_member_id[user_id] = _id
         await __answer(cl_add_member2)
-        waiting_for_member_id.remove(user_id)
-        waiting_for_name.append(user_id)
-    elif user_id in waiting_for_name:
-        memb = (await get_members(user_id))[0]
-        await create_member(add_member_ids[user_id], memb['class_id'], message.text)
+        w_cl_am_member_id.remove(user_id)
+        w_cl_am_name.append(user_id)
+    elif user_id in w_cl_am_name:
+        await create_member(cl_am_member_id[user_id], memb['class_id'], message.text)
         await __answer(cl_add_member3)
-        del add_member_ids[user_id]
-        waiting_for_name.remove(user_id)
+        del cl_am_member_id[user_id]
+        w_cl_am_name.remove(user_id)
     #
     
     # Group create
-    elif user_id in waiting_for_group_name:
-        add_group_names[user_id] = message.text
+    elif user_id in w_cl_gc_name:
+        cl_gc_name[user_id] = message.text
         await __answer(cl_groups_create2)
-        waiting_for_group_name.remove(user_id)
-        waiting_for_group_members.append(user_id)
-    elif user_id in waiting_for_group_members:
-        memb = (await get_members(user_id))[0]
+        w_cl_gc_name.remove(user_id)
+        w_cl_gc_members.append(user_id)
+    elif user_id in w_cl_gc_members:
         members = message.text.splitlines()
         members_ids = [(await get_members(class_id=memb['class_id'], name=i))[0]['id'] for i in members]
-        gr = await create_group(memb['class_id'], add_group_names[user_id])
+        gr = await create_group(memb['class_id'], cl_gc_name[user_id])
         for i in members_ids:
             await assign_to_group(i, int(gr['id']))
-        await __answer(cl_groups_create3, ctx_gc_grn=add_group_names[user_id])
-        del add_group_names[user_id]
-        waiting_for_group_members.remove(user_id)
+        await __answer(cl_groups_create3, ctx_g=cl_gc_name[user_id])
+        del cl_gc_name[user_id]
+        w_cl_gc_members.remove(user_id)
+    #
+    
+    # Group edit
+    elif user_id in w_cl_ge_name:
+        cl_ge_id[user_id] = (await get_group(name=message.text))['id']
+        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
+        await m.delete()
+        await __answer(cl_groups_edit2, ctx_g=message.text)
+        w_cl_ge_name.remove(user_id)
+    
+    elif user_id in w_cl_ge_n_name:
+        await edit_group(cl_ge_id[user_id], message.text)
+        await __answer(cl_groups_edit_name2, ctx_g=message.text)
     #
 
 async def main() -> None:
