@@ -15,6 +15,7 @@ from aiogram import html
 back_button_text = '↩️ Назад'
 settings_back_button = (back_button_text, 'cl_settings')
 groups_back_button = (back_button_text, 'cl_groups')
+schedule_back_button = (back_button_text, 'schedule')
 schedule_settings_back_button = (back_button_text, 'schedule_settings')
 
 home_button = ('↩️ На главную', 'home')
@@ -55,7 +56,7 @@ class wc_join_class:
 
 
 class home:
-    text = html.bold('👋 Привет, {user_name} ({current_class} {current_group})!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
+    text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
     buttons = [
         [
             ('📆 ДЗ', 'hw'),
@@ -231,6 +232,19 @@ class schedule_settings:
     text = 'Настройки расписания'
     buttons = [
         [
+            ('Предметы', 'sch_subj'),
+            ('Звонки', 'sch_bells')
+        ],
+        [
+            schedule_back_button,
+            home_button
+        ]
+    ]
+
+class sch_subj:
+    text = 'Текущие предметы:\n{subjects_text}'
+    buttons = [
+        [
             ('Создать предмет', 'sch_subj_create'),
             ('Изменить предмет', 'sch_subj_edit'),
             ('Удалить предмет', 'sch_subj_delete')
@@ -244,7 +258,12 @@ class schedule_settings:
 class sch_subj_create1:
     text = 'Напишите название предмета'
 class sch_subj_create2:
-    text = 'Введите список групп которые должны будут иметь данный предмет (на каждой строке - одна группа)'
+    text = 'Введите список групп которые должны будут иметь данный предмет (на каждой строке - одна группа). Если вы хотите создать общий для всех участников класса предмет, то нажмите на кнопку'
+    buttons = [
+        [
+            ('❌', 'sch_subj_create_general')
+        ]
+    ]
 class sch_subj_create3:
     text = \
     '''

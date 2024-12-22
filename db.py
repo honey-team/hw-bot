@@ -334,7 +334,7 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) 
     }
     
     for subj in subjects:
-        is_in_groups_ids = False
+        is_in_groups_ids = subj['groups_ids'] == []
         for i in groups_ids:
             if i in subj['groups_ids']:
                 is_in_groups_ids = True

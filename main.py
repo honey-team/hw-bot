@@ -16,6 +16,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     KeyboardButton
 )
+from aiogram.exceptions import TelegramBadRequest
 
 from config import *
 from db import *
@@ -41,20 +42,20 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     user_id = message.from_user.id
     memb = x[0] if (x := await get_members(user_id)) else None
     cl = await get_class(memb['class_id']) if memb else None
-    if memb:
-        user_name = memb['name']
-        cl_name = cl['name']
-        gr_name = ', '.join([i['name'] for i in (await get_groups_by_ids(memb['groups_ids']))])
-    else:
-        user_name = message.from_user.full_name if message else 'аноним'
-        cl_name = 'ошибка'
-        gr_name = ''
+    
+    user_name = message.from_user.full_name if message else 'ошибка'
+    cl_name = 'ошибка'
+    gr_name = ''
+    subjects_text = ''
     groups_text = ''
     members_text = ''
     members_count = 0
     groups_list = []
     
     if memb:
+        user_name = memb['name']
+        cl_name = cl['name']
+        gr_name = ', '.join([i['name'] for i in (await get_groups_by_ids(memb['groups_ids']))])
         for gr in (await get_groups_by_ids(cl['groups_ids'])):
             if gr and (x := gr.get('name')):
                 groups_text += html.bold(f'{x}:\n')
@@ -66,7 +67,11 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         for mb in (await get_members(class_id=cl['id'])):
             members_count += 1
             members_text += mb['name'] + html.code(f' ({mb['id']})\n')
-    
+        for i, subj in enumerate(await get_subjects(class_id=memb['class_id'])):
+            gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
+            gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
+            subjects_text += f'{i + 1}. {subj['name']}{gr_names_text}\n'
+
     schedule_text = ''
     schedule_day = ''
     
@@ -104,7 +109,9 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
             for j in range(7):
                 h.append(i + timedelta(days=j))
         
-        if d not in h:
+        if d in h:
+            schedule_text = 'Сегодня уроков нет (выходной)'
+        else:
             schedule = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], d)
             for lesson, subj in schedule.items():
                 if not any(list(schedule.values())[lesson-1:]):
@@ -115,7 +122,6 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
                 else:
                     schedule_text += '❌'
                 schedule_text += '\n'
-        
     
     general_info = {
         'user_name': user_name,
@@ -123,13 +129,14 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         'hw_completed': '0',
         'hw_all': '0',
         'current_class': cl_name,
-        'current_group': gr_name,
+        'current_group': ' ' + gr_name if gr_name else '',
         'cl_members_text': members_text,
         'cl_groups_members_text': groups_text,
         'cl_members_num': members_count,
         'cl_groups_list': ', '.join(groups_list) if groups_list else 'нет',
         'schedule_day': schedule_day,
         'schedule_text': schedule_text or 'Сегодня уроков нет',
+        'subjects_text': subjects_text or 'Предметов нет',
         'ctx.g': ctx_g or 'ошибка'
     }
     
@@ -180,7 +187,10 @@ current_schedule: dict[int, date] = {}
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     user_id = callback_query.from_user.id
     async def __edit(dcls: TextAndButtonsDataclass, **additional):
-        await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
+        try:
+            await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
+        except TelegramBadRequest:
+            pass
 
     match callback_query.data:
         case 'wc_create_class':
@@ -241,9 +251,16 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(schedule)
         case 'schedule_settings':
             await __edit(schedule_settings)
+        case 'sch_subj':
+            await __edit(sch_subj)
         case 'sch_subj_create':
             await __edit(sch_subj_create1)
             w_sch_set_sc_name.append(user_id)
+        case 'sch_subj_create_general':
+            sch_set_sc_groups_ids[user_id] = []
+            await __edit(sch_subj_create3)
+            w_sch_set_sc_groups.remove(user_id)
+            w_sch_set_sc_schedule.append(user_id)
         case 'hw':
             await __edit(hw)
             
