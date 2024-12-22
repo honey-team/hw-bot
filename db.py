@@ -213,19 +213,26 @@ async def edit_group(group_id: int, name: str):
 #
 
 # Delete
-async def delete_group(group_id: Optional[int] = None, name: Optional[str] = None):
+async def delete_group(group_id: int, class_id: Optional[int] = None, name: Optional[str] = None):
+    if class_id: # Delete group usages in class
+        cl_groups_ids: list[int] = (await get_class(class_id))['groups_ids']
+        cl_groups_ids.remove(group_id)
+        await edit_class(class_id, groups_ids=cl_groups_ids)
+        
+        for i in (await get_members(class_id=class_id)):
+            await unassign_to_group(i['id'], group_id)
     return await delete_from('groups', where(
-            group_id=group_id,
-            name=name
-        )
-    )
+        id=group_id,
+        name=name
+    ))
 #
 
 # Utils
 async def assign_to_group(user_id: int, group_id: int):
-    old_groups_ids = (await get_members(user_id))[0]['groups_ids']
-    new_groups_ids = old_groups_ids + [group_id]
-    await edit_member(user_id, groups_ids=new_groups_ids)
+    groups_ids = (await get_members(user_id))[0]['groups_ids']
+    if group_id not in groups_ids:
+        groups_ids.append(group_id)
+    await edit_member(user_id, groups_ids=groups_ids)
 
 async def unassign_to_group(user_id: int, group_id: int):
     groups_ids: list[int] = (await get_members(user_id))[0]['groups_ids']

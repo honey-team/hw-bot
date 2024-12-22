@@ -1,6 +1,5 @@
 import asyncio
 from os import getenv
-from re import U
 from typing import Any, Optional
 
 from aiogram import Bot, Dispatcher, html
@@ -43,7 +42,6 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     if memb:
         user_name = memb['name']
         cl_name = cl['name']
-        # gr_name = ', '.join([(await get_group(memb['class_id'], i))['name'] for i in get_groups_from_dict(memb) if i])
         gr_name = ', '.join([i['name'] for i in (await get_groups_by_ids(memb['groups_ids']))])
     else:
         user_name = message.from_user.full_name if message else 'аноним'
@@ -57,7 +55,7 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     if memb:
         # for gr in (await get_all_groups(memb['class_id'], general=False)):
         for gr in (await get_groups_by_ids(cl['groups_ids'])):
-            if (x := gr.get('name')):
+            if gr and (x := gr.get('name')):
                 groups_text += html.bold(f'{x}:\n')
                 groups_list.append(x)
             # for mb in (await get_all_members(class_id=memb['class_id'])):
@@ -112,12 +110,15 @@ cl_ge_id = {}
 
 w_cl_ge_n_name = []
 
+w_cl_ge_m_members = []
+
+w_cl_gd_name = []
 
 # Homework
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
-    async def __edit(dcls: TextAndButtonsDataclass):
-        await callback_query.message.edit_text(await format_text(dcls.text, callback_query), reply_markup=generate_markup(dcls))
+    async def __edit(dcls: TextAndButtonsDataclass, **additional):
+        await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
 
     user_id = callback_query.from_user.id
     match callback_query.data:
@@ -156,6 +157,16 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'cl_groups_edit_name':
             await __edit(cl_groups_edit_name1)
             w_cl_ge_n_name.append(user_id)
+        case 'cl_groups_edit_members':
+            gr = await get_group(cl_ge_id[user_id])
+            await __edit(cl_groups_edit_members1, ctx_g=gr['name'])
+            w_cl_ge_m_members.append(user_id)
+        case 'cl_groups_delete':
+            cl = await get_class((await get_members(user_id))[0]['class_id'])
+            await callback_query.message.answer(await format_text(cl_groups_delete1.text, callback_query), reply_markup=ReplyKeyboardMarkup(keyboard=[
+                [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
+            ]))
+            w_cl_gd_name.append(user_id)
 
 @dp.message()
 async def echo_handler(message: Message) -> None:
@@ -205,7 +216,10 @@ async def echo_handler(message: Message) -> None:
         w_cl_gc_members.append(user_id)
     elif user_id in w_cl_gc_members:
         members = message.text.splitlines()
-        members_ids = [(await get_members(class_id=memb['class_id'], name=i))[0]['id'] for i in members]
+        members_ids = [
+            x[0]['id']
+            for i in members if (x := await get_members(class_id=memb['class_id'], name=i))
+        ]
         gr = await create_group(memb['class_id'], cl_gc_name[user_id])
         for i in members_ids:
             await assign_to_group(i, int(gr['id']))
@@ -225,6 +239,34 @@ async def echo_handler(message: Message) -> None:
     elif user_id in w_cl_ge_n_name:
         await edit_group(cl_ge_id[user_id], message.text)
         await __answer(cl_groups_edit_name2, ctx_g=message.text)
+        w_cl_ge_n_name.remove(user_id)
+    
+    elif user_id in w_cl_ge_m_members:
+        members = message.text.splitlines()
+        members_ids = [(await get_members(class_id=memb['class_id'], name=i))[0]['id'] for i in members]
+
+        for i in (await get_members(class_id=memb['class_id'])):
+            if i['id'] not in members_ids:
+                await unassign_to_group(i['id'], cl_ge_id[user_id])
+        for i in members_ids:
+            await assign_to_group(i, cl_ge_id[user_id])
+        
+        gr = await get_group(cl_ge_id[user_id])
+        await __answer(cl_groups_edit_members2, ctx_g=gr['name'])
+        w_cl_ge_m_members.remove(user_id)
+    #
+    
+    # Group delete
+    elif user_id in w_cl_gd_name:
+        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
+        await m.delete()
+        gr_id = x['id'] if (x := await get_group(name=message.text)) else None
+        if gr_id:
+            await delete_group(gr_id, memb['class_id'])
+            await __answer(cl_groups_delete2, ctx_g=message.text)
+            w_cl_gd_name.remove(user_id)
+        else:
+            await message.answer(f'Не удалось найти группу с именем {html.bold(message.text)}')
     #
 
 async def main() -> None:

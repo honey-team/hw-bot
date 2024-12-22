@@ -8,9 +8,12 @@ class TextAndButtonsDataclass(Protocol):
 
 from aiogram import html
 
+back_button_text = '↩️ Назад'
+
 home_button = ('↩️ На главную', 'home')
 settings_button = ('⚙️ Настройки', 'cl_settings')
-settings_back_button = ('↩️ Назад', 'cl_settings')
+settings_back_button = (back_button_text, 'cl_settings')
+groups_back_button = (back_button_text, 'cl_groups')
 
 home_button_markup = [
     [
@@ -115,10 +118,10 @@ class cl_groups_create1:
 class cl_groups_create2:
     text = 'На отдельных строчках напишите имена тех, кого хотите добавить в группу (в будущем можно изменить)'
 class cl_groups_create3:
-    text = 'Группа ' + html.bold('{ctx.g}') + ' создана!'
+    text = f'Группа {html.bold('{ctx.g}')} создана!'
     buttons = [
         [
-            ('👥 Посмотреть в группах', 'cl_groups'),
+            groups_back_button,
         ],
         [
             settings_button,
@@ -129,13 +132,13 @@ class cl_groups_create3:
 class cl_groups_edit1:
     text = 'Введите название группы, которую хотите изменить'
 class cl_groups_edit2:
-    text = 'Что вы хотите изменить в группе ' + html.bold('{ctx.g}')
+    text = f'Что вы хотите изменить в группе {html.bold('{ctx.g}')}'
     buttons = [ [
             ('✍️ Название', 'cl_groups_edit_name'),
             ('👤 Участники', 'cl_groups_edit_members'),
         ],
         [
-            ('Назад', 'cl_groups'),
+            groups_back_button,
             settings_button,
             home_button
         ]
@@ -144,10 +147,39 @@ class cl_groups_edit2:
 class cl_groups_edit_name1:
     text = 'Введите новое название'
 class cl_groups_edit_name2:
-    text = 'Группа переименована в ' + html.bold('{ctx.g}')
+    text = f'Группа переименована в {html.bold('{ctx.g}')}'
     buttons = [
         [
             ('👥 Посмотреть в группах', 'cl_groups'),
+        ],
+        [
+            settings_button,
+            home_button
+        ]
+    ]
+
+class cl_groups_edit_members1:
+    text = f'Введите список участников которые должны быть прикреплёнными к группе {html.bold('{ctx.g}')}'
+class cl_groups_edit_members2:
+    text = f'Список участников группы {html.bold('{ctx.g}')} обновлён!'
+    buttons = [
+        [
+            ('👥 Посмотреть в группах', 'cl_groups'),
+        ],
+        [
+            settings_button,
+            home_button
+        ]
+    ]
+
+class cl_groups_delete1:
+    text = 'Введите название группы, которую хотите удалить'
+
+class cl_groups_delete2:
+    text = f'Группа {html.bold('{ctx.g}')} удалена'
+    buttons = [
+        [
+            groups_back_button,
         ],
         [
             settings_button,
