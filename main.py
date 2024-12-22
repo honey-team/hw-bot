@@ -1,9 +1,9 @@
 import asyncio
-from datetime import date, timedelta
+from datetime import timedelta
 from os import getenv
-from typing import Any, Optional
+from typing import Any
 
-from aiogram import Bot, Dispatcher, html
+from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
@@ -26,7 +26,7 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 
-def generate_markup(dataclass: TextAndButtonsDataclass) -> InlineKeyboardMarkup:
+def generate_markup(dataclass: TextAndButtonsDataclass) -> Optional[InlineKeyboardMarkup]:
     try:
         return InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -40,8 +40,8 @@ def generate_markup(dataclass: TextAndButtonsDataclass) -> InlineKeyboardMarkup:
 
 async def format_text(txt: str, message: Optional[Message | CallbackQuery] = None, ctx_g: Optional[str] = None) -> str:
     user_id = message.from_user.id
-    memb = x[0] if (x := await get_members(user_id)) else None
-    cl = await get_class(memb['class_id']) if memb else None
+    member = x[0] if (x := await get_members(user_id)) else None
+    cl = await get_class(member['class_id']) if member else None
     
     user_name = message.from_user.full_name if message else 'ошибка'
     cl_name = 'ошибка'
@@ -52,10 +52,10 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     members_count = 0
     groups_list = []
     
-    if memb:
-        user_name = memb['name']
+    if member:
+        user_name = member['name']
         cl_name = cl['name']
-        gr_name = ', '.join([i['name'] for i in (await get_groups_by_ids(memb['groups_ids']))])
+        gr_name = ', '.join([i['name'] for i in (await get_groups_by_ids(member['groups_ids']))])
         for gr in (await get_groups_by_ids(cl['groups_ids'])):
             if gr and (x := gr.get('name')):
                 groups_text += html.bold(f'{x}:\n')
@@ -67,7 +67,7 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         for mb in (await get_members(class_id=cl['id'])):
             members_count += 1
             members_text += mb['name'] + html.code(f' ({mb['id']})\n')
-        for i, subj in enumerate(await get_subjects(class_id=memb['class_id'])):
+        for i, subj in enumerate(await get_subjects(class_id=member['class_id'])):
             gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
             gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
             subjects_text += f'{i + 1}. {subj['name']}{gr_names_text}\n'
@@ -112,9 +112,9 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         if d in h:
             schedule_text = 'Сегодня уроков нет (выходной)'
         else:
-            schedule = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], d)
-            for lesson, subj in schedule.items():
-                if not any(list(schedule.values())[lesson-1:]):
+            sch = await get_schedule_for_day(member['class_id'], member['groups_ids'], d)
+            for lesson, subj in sch.items():
+                if not any(list(sch.values())[lesson - 1:]):
                     break
                 schedule_text += f'{lesson} урок: '
                 if subj:
@@ -290,7 +290,7 @@ async def echo_handler(message: Message) -> None:
     elif user_id in w_cl_am_member_id:
         try:
             _id = int(message.text)
-        except:
+        except ValueError:
             await message.answer('Пожалуйста, пишите айди участника без лишних символов, кроме цифр.\n' + cl_add_member1.text)
             return
         cl_am_member_id[user_id] = _id
