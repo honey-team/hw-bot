@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, timedelta
 from os import getenv
 from typing import Any, Optional
 
@@ -37,7 +38,8 @@ def generate_markup(dataclass: TextAndButtonsDataclass) -> InlineKeyboardMarkup:
         return None
 
 async def format_text(txt: str, message: Optional[Message | CallbackQuery] = None, ctx_g: Optional[str] = None) -> str:
-    memb = x[0] if (x := await get_members(message.from_user.id)) else None
+    user_id = message.from_user.id
+    memb = x[0] if (x := await get_members(user_id)) else None
     cl = await get_class(memb['class_id']) if memb else None
     if memb:
         user_name = memb['name']
@@ -53,12 +55,10 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     groups_list = []
     
     if memb:
-        # for gr in (await get_all_groups(memb['class_id'], general=False)):
         for gr in (await get_groups_by_ids(cl['groups_ids'])):
             if gr and (x := gr.get('name')):
                 groups_text += html.bold(f'{x}:\n')
                 groups_list.append(x)
-            # for mb in (await get_all_members(class_id=memb['class_id'])):
             for mb in (await get_members(class_id=cl['id'])):
                 if gr['id'] in mb['groups_ids']:
                     groups_text += mb['name'] + html.code(f' ({mb['id']})\n')
@@ -66,6 +66,56 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         for mb in (await get_members(class_id=cl['id'])):
             members_count += 1
             members_text += mb['name'] + html.code(f' ({mb['id']})\n')
+    
+    schedule_text = ''
+    schedule_day = ''
+    
+    weekdays = [
+        'понедельник',
+        'вторник',
+        'среда',
+        'четверг',
+        'пятница',
+        'суббота',
+        'воскресенье'
+    ]
+    months = [
+        'января',
+        'февраля',
+        'марта',
+        'апреля',
+        'мая',
+        'июня',
+        'июля',
+        'августа',
+        'сентября',
+        'октября',
+        'ноября',
+        'декабря'
+    ]
+    
+    if current_schedule.get(user_id):
+        d = current_schedule[user_id]
+        schedule_day = f'{d.day} {months[d.month-1]} {d.year} ({weekdays[d.weekday()]})'
+        
+        h = []
+        
+        for i in holidays:
+            for j in range(7):
+                h.append(i + timedelta(days=j))
+        
+        if d not in h:
+            schedule = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], d)
+            for lesson, subj in schedule.items():
+                if not any(list(schedule.values())[lesson-1:]):
+                    break
+                schedule_text += f'{lesson} урок: '
+                if subj:
+                    schedule_text += subj['name']
+                else:
+                    schedule_text += '❌'
+                schedule_text += '\n'
+        
     
     general_info = {
         'user_name': user_name,
@@ -78,6 +128,8 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         'cl_groups_members_text': groups_text,
         'cl_members_num': members_count,
         'cl_groups_list': ', '.join(groups_list) if groups_list else 'нет',
+        'schedule_day': schedule_day,
+        'schedule_text': schedule_text or 'Сегодня уроков нет',
         'ctx.g': ctx_g or 'ошибка'
     }
     
@@ -114,28 +166,33 @@ w_cl_ge_m_members = []
 
 w_cl_gd_name = []
 
+w_sch_set_sc_name = []
+w_sch_set_sc_groups = []
+w_sch_set_sc_schedule = []
+sch_set_sc_name = {}
+sch_set_sc_groups_ids = {}
+
+current_schedule: dict[int, date] = {}
+
+
 # Homework
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
+    user_id = callback_query.from_user.id
     async def __edit(dcls: TextAndButtonsDataclass, **additional):
         await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
 
-    user_id = callback_query.from_user.id
     match callback_query.data:
-        case 'home':
-            if await get_members(user_id):
-                await __edit(home)
-            else:
-                await __edit(welcome)
-        case 'hw':
-            await __edit(hw)
-        case 'schedule':
-            await __edit(schedule)
         case 'wc_create_class':
             await __edit(wc_create_class1)
             w_wc_cc_class_name.append(user_id)
         case 'wc_join_class':
             await __edit(wc_join_class)
+        case 'home':
+            if await get_members(user_id):
+                await __edit(home)
+            else:
+                await __edit(welcome)
         case 'cl_settings':
             await __edit(cl_settings)
         case 'cl_members':
@@ -167,14 +224,36 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
             ]))
             w_cl_gd_name.append(user_id)
+        case 'schedule':
+            current_schedule[user_id] = date.today()
+            await __edit(schedule)
+        case 'schedule_left_week':
+            current_schedule[user_id] -= timedelta(days=7)
+            await __edit(schedule)
+        case 'schedule_left':
+            current_schedule[user_id] -= timedelta(days=1)
+            await __edit(schedule)
+        case 'schedule_right':
+            current_schedule[user_id] += timedelta(days=1)
+            await __edit(schedule)
+        case 'schedule_right_week':
+            current_schedule[user_id] += timedelta(days=7)
+            await __edit(schedule)
+        case 'schedule_settings':
+            await __edit(schedule_settings)
+        case 'sch_subj_create':
+            await __edit(sch_subj_create1)
+            w_sch_set_sc_name.append(user_id)
+        case 'hw':
+            await __edit(hw)
+            
 
 @dp.message()
 async def echo_handler(message: Message) -> None:
-    
+    user_id = message.from_user.id
     async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
     
-    user_id = message.from_user.id
     memb = x[0] if (x := await get_members(user_id)) else None
 
     # Create class
@@ -267,6 +346,25 @@ async def echo_handler(message: Message) -> None:
             w_cl_gd_name.remove(user_id)
         else:
             await message.answer(f'Не удалось найти группу с именем {html.bold(message.text)}')
+    #
+    
+    # Schedule settings subjects create
+    elif user_id in w_sch_set_sc_name:
+        sch_set_sc_name[user_id] = message.text
+        await __answer(sch_subj_create2)
+        w_sch_set_sc_name.remove(user_id)
+        w_sch_set_sc_groups.append(user_id)
+    elif user_id in w_sch_set_sc_groups:
+        sch_set_sc_groups_ids[user_id] = [x['id'] for i in message.text.splitlines() if (x := await get_group(name=i))]
+        await __answer(sch_subj_create3)
+        w_sch_set_sc_groups.remove(user_id)
+        w_sch_set_sc_schedule.append(user_id)
+    elif user_id in w_sch_set_sc_schedule:
+        await create_subject(memb['class_id'], sch_set_sc_groups_ids[user_id], sch_set_sc_name[user_id], message.text)
+        await __answer(sch_subj_create4)
+        w_sch_set_sc_schedule.remove(user_id)
+        del sch_set_sc_groups_ids[user_id]
+        del sch_set_sc_name[user_id]
     #
 
 async def main() -> None:

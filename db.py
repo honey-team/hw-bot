@@ -1,22 +1,29 @@
-from typing import Any, Optional, overload
+from datetime import date, timedelta
+from typing import Any, Literal, Never, Optional, overload
 from aiosqlite import connect
 from ujson import loads, dumps
+from config import start_of_year, holidays
 
 __all__ = (
     'init_all',
     'create_member',
     'create_class',
     'create_group',
+    'create_subject',
     'get_members',
     'get_class',
     'get_group',
     'get_groups_by_ids',
+    'get_subjects',
     'edit_member',
     'edit_class',
     'edit_group',
+    'edit_subject',
     'delete_group',
+    'delete_subject',
     'assign_to_group',
     'unassign_to_group',
+    'get_schedule_for_day',
     'full_reset'
 )
 
@@ -116,10 +123,27 @@ async def init_groups():
         'name text'
     )
 
+async def init_subjects():
+    await create_table_ine(
+        'subjects',
+        'id int',
+        'class_id int',
+        'groups_ids text',
+        'name text',
+        'schedule text'
+        # How schedule works?
+        # it's text with two letters
+        # (first - day (from 0 to 9, 0, 1, 2, 3, 4 - from monday to friday at odd week (1, 3, ...)
+        # 5, 6, 7, 8, 9 - from monday to friday at even week (2, 4, ...)
+        # second - lesson index (1, 2, 3, 4, 5, 6, 7, 8))
+        # example: 01025152 compiles how 'at monday at 1st and 2nd class'
+    )
+
 async def init_all():
     await init_members()
     await init_classes()
     await init_groups()
+    await init_subjects()
 #
 
 # Create
@@ -157,6 +181,17 @@ async def create_group(class_id: int, name: str = ''):
         id=group_id,
         name=name
     )
+
+async def create_subject(class_id: int, groups_ids: list[int], name: str, schedule: str):
+    subject_id = await get_next_id('subjects')
+    return await insert_into(
+        'subjects',
+        id=subject_id,
+        class_id=class_id,
+        groups_ids=dumps(groups_ids),
+        name=name,
+        schedule=schedule
+    )
 #
 
 # Get
@@ -189,6 +224,25 @@ async def get_group(group_id: Optional[int] = None, name: Optional[str] = None):
 
 async def get_groups_by_ids(groups_ids: list[int]):
     return [(await get_group(i)) for i in groups_ids]
+
+async def get_subjects(
+    subject_id: Optional[int] = None,
+    class_id: Optional[int] = None,
+    groups_ids: Optional[list[int]] = None,
+    name: Optional[str] = None,
+    schedule: Optional[str] = None
+):
+    subj = await get_all_by('subjects', where(
+        id=subject_id,
+        class_id=class_id,
+        groups_ids=dumps(groups_ids) if groups_ids else None,
+        name=name,
+        schedule=schedule
+    ))
+    if subj:
+        for i in subj:
+            i['groups_ids'] = loads(i['groups_ids'])
+    return subj
 #
 
 # Edit
@@ -196,20 +250,23 @@ async def edit_member(user_id: int, name: Optional[str] = None, groups_ids: Opti
     await update('members', values(
             name=name,
             groups_ids=dumps(groups_ids) if groups_ids is not None else None
-        ),
-        where(id=user_id)
-    )
+        ), where(id=user_id))
 
 async def edit_class(class_id: int, name: Optional[str] = None, groups_ids: Optional[list[int]] = None):
     await update('classes', values(
             name=name,
             groups_ids=dumps(groups_ids) if groups_ids is not None else None
-        ),
-        where(id=class_id)
-    )
+        ), where(id=class_id))
 
 async def edit_group(group_id: int, name: str):
     await update('groups', values(name=name), where(id=group_id))
+
+async def edit_subject(subject_id: int, groups_ids: Optional[list[int]] = None, name: Optional[str] = None, schedule: Optional[str] = None):
+    await update('subjects', values(
+        groups_ids=dumps(groups_ids) if groups_ids else None,
+        name=name,
+        schedule=schedule
+    ), where(id=subject_id))
 #
 
 # Delete
@@ -225,6 +282,17 @@ async def delete_group(group_id: int, class_id: Optional[int] = None, name: Opti
         id=group_id,
         name=name
     ))
+
+async def delete_subject(subject_id: Optional[int] = None, class_id: Optional[int] = None, groups_ids: Optional[list[int]] = None, name: Optional[str] = None, schedule: Optional[str] = None):
+    subj = await delete_from('subjects', where(
+        id=subject_id,
+        class_id=class_id,
+        groups_ids=dumps(groups_ids) if groups_ids else None,
+        name=name,
+        schedule=schedule
+    ))
+    subj['groups_ids'] = loads(subj['groups_ids'])
+    return subj
 #
 
 # Utils
@@ -240,6 +308,48 @@ async def unassign_to_group(user_id: int, group_id: int):
         groups_ids.remove(group_id)
     await edit_member(user_id, groups_ids=groups_ids)
 
+async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) -> dict[Literal[1, 2, 3, 4, 5, 6, 7, 8, 9], dict[str, Any] | None]:
+    # get (even or odd)? week
+    d = day
+    weeks = [start_of_year + timedelta(days=7*i) for i in range((d - date(d.year, 9, 2)).days // 7 + 1)]
+    for i in holidays:
+        try:
+            weeks.remove(i)
+        except ValueError:
+            pass
+    is_even = len(weeks) % 2 == 0
+    
+    subjects = await get_subjects(class_id=class_id) or []
+    
+    result = {
+        1: None,
+        2: None,
+        3: None,
+        4: None,
+        5: None,
+        6: None,
+        7: None,
+        8: None,
+        9: None
+    }
+    
+    for subj in subjects:
+        is_in_groups_ids = False
+        for i in groups_ids:
+            if i in subj['groups_ids']:
+                is_in_groups_ids = True
+        if is_in_groups_ids:
+            sch: str = subj['schedule']
+            for si in range(len(sch) // 2):
+                sday, slesson = int(sch[2*si]), int(sch[2*si+1])
+                # 0, 1, 2, 3, 4 - odd
+                # 5, 6, 7, 8, 9 - even
+                if is_even:
+                    sday -= 5
+                if sday == day.weekday():
+                    result[slesson] = subj
+    return result
+    
 def full_reset():
     with open(path, 'w') as f: f.write('') 
 #

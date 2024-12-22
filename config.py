@@ -1,5 +1,9 @@
 # Typing protocols
 from typing import Optional, Protocol
+from datetime import date
+
+start_of_year = date(2024, 9, 2)
+holidays = [date(2024, 10, 28), date(2024, 12, 30)]
 
 class TextAndButtonsDataclass(Protocol):
     text: str
@@ -9,11 +13,14 @@ class TextAndButtonsDataclass(Protocol):
 from aiogram import html
 
 back_button_text = '↩️ Назад'
+settings_back_button = (back_button_text, 'cl_settings')
+groups_back_button = (back_button_text, 'cl_groups')
+schedule_settings_back_button = (back_button_text, 'schedule_settings')
 
 home_button = ('↩️ На главную', 'home')
 settings_button = ('⚙️ Настройки', 'cl_settings')
-settings_back_button = (back_button_text, 'cl_settings')
-groups_back_button = (back_button_text, 'cl_groups')
+
+schedule_button = ('🗓️ Расписание', 'schedule')
 
 home_button_markup = [
     [
@@ -52,7 +59,7 @@ class home:
     buttons = [
         [
             ('📆 ДЗ', 'hw'),
-            ('🗓️ Расписание', 'schedule')
+            schedule_button
         ],
         [
             settings_button,
@@ -205,15 +212,53 @@ class hw:
     
 
 class schedule:
-    text = 'Расписание\nВ разработке'
+    text = 'Расписание на {schedule_day}\n{schedule_text}'
     buttons = [
         [
+            ('⬅️⬅️', 'schedule_left_week'),
             ('⬅️', 'schedule_left'),
             ('ℹ️', 'schedule_info'),
-            ('➡️', 'schedule_right')
+            ('➡️', 'schedule_right'),
+            ('➡️➡️', 'schedule_right_week')
         ],
         [
             ('⚙️ Изменить расписание', 'schedule_settings'),
             home_button
         ]
+    ]
+
+class schedule_settings:
+    text = 'Настройки расписания'
+    buttons = [
+        [
+            ('Создать предмет', 'sch_subj_create'),
+            ('Изменить предмет', 'sch_subj_edit'),
+            ('Удалить предмет', 'sch_subj_delete')
+        ],
+        [
+            schedule_settings_back_button,
+            home_button
+        ]
+    ]
+
+class sch_subj_create1:
+    text = 'Напишите название предмета'
+class sch_subj_create2:
+    text = 'Введите список групп которые должны будут иметь данный предмет (на каждой строке - одна группа)'
+class sch_subj_create3:
+    text = \
+    '''
+    Введите расписание по следующему формату:
+    - Строка, состоящяя из цифр
+    - Каждая нечетная цифра - день в расписании (0, 1, 2, 3, 4 - дни недели в нечетной неделе; 5, 6, 7, 8, 9 - дни недели в четной неделе)
+    Если хотите указать, что предмет будет каждую неделю, то указывайте сразу в двух неделях (0151 - каждый понедельник первым уроком)
+    - Каждая четная цифра - номер урока (от 1 до 9)
+    '''
+class sch_subj_create4:
+    text = 'Ваш предмет создан!'
+    buttons = [
+        [
+            schedule_settings_back_button,
+            home_button
+        ],
     ]
