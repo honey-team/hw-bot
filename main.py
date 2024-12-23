@@ -38,7 +38,7 @@ def generate_markup(dataclass: TextAndButtonsDataclass) -> Optional[InlineKeyboa
     except AttributeError:
         return None
 
-async def format_text(txt: str, message: Optional[Message | CallbackQuery] = None, ctx_g: Optional[str] = None) -> str:
+async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optional[str] = None) -> str:
     user_id = message.from_user.id
     member = x[0] if (x := await get_members(user_id)) else None
     cl = await get_class(member['class_id']) if member else None
@@ -76,27 +76,15 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
     schedule_day = ''
     
     weekdays = [
-        'понедельник',
-        'вторник',
-        'среда',
-        'четверг',
-        'пятница',
-        'суббота',
+        'понедельник', 'вторник', 'среда',
+        'четверг', 'пятница', 'суббота',
         'воскресенье'
     ]
     months = [
-        'января',
-        'февраля',
-        'марта',
-        'апреля',
-        'мая',
-        'июня',
-        'июля',
-        'августа',
-        'сентября',
-        'октября',
-        'ноября',
-        'декабря'
+        'января', 'февраля', 'марта',
+        'апреля', 'мая', 'июня',
+        'июля', 'августа', 'сентября',
+        'октября', 'ноября', 'декабря'
     ]
     
     if current_schedule.get(user_id):
@@ -119,10 +107,17 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
                 schedule_text += f'{lesson} урок: '
                 if subj:
                     schedule_text += subj['name']
+                    if (x := subj.get('office')):
+                        schedule_text += f' в {x}'
                 else:
                     schedule_text += '❌'
                 schedule_text += '\n'
-    
+
+    cl = current_lesson.get(user_id, {
+        'name': None,
+        'office': None,
+        'teacher': None
+    })
     general_info = {
         'user_name': user_name,
         'user_id': message.from_user.id if message else 'ошибка',
@@ -137,7 +132,10 @@ async def format_text(txt: str, message: Optional[Message | CallbackQuery] = Non
         'schedule_day': schedule_day,
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
-        'ctx.g': ctx_g or 'ошибка'
+        'cles.name': cl['name'] or 'ошибка',
+        'cles.office': cl['office'] or 'не указан',
+        'cles.teacher': cl['teacher'] or 'не указан',
+        'ctx.g': ctx_g or 'ошибка',
     }
     
     for k, v in general_info.items():
@@ -181,11 +179,23 @@ sch_set_sc_groups_ids = {}
 
 current_schedule: dict[int, date] = {}
 
+w_sch_info_lesson = []
+current_lesson: dict[int, dict[str, Any]] = {}
+
+w_sch_set_se_name = []
+w_sch_set_se_new_name = []
+w_sch_set_se_groups = []
+w_sch_set_se_schedule = []
+w_sch_set_se_office = []
+w_sch_set_se_teacher = []
+
+sch_set_se_csubj = {}
 
 # Homework
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     user_id = callback_query.from_user.id
+    memb = x[0] if (x := await get_members(user_id)) else None
     async def __edit(dcls: TextAndButtonsDataclass, **additional):
         try:
             await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
@@ -235,7 +245,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             ]))
             w_cl_gd_name.append(user_id)
         case 'schedule':
-            current_schedule[user_id] = date.today()
+            if current_schedule.get(user_id) is None:
+                current_schedule[user_id] = date.today()
             await __edit(schedule)
         case 'schedule_left_week':
             current_schedule[user_id] -= timedelta(days=7)
@@ -243,6 +254,23 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'schedule_left':
             current_schedule[user_id] -= timedelta(days=1)
             await __edit(schedule)
+        case 'schedule_today':
+            current_schedule[user_id] = date.today()
+            await __edit(schedule)
+        case 'schedule_info':
+            await __edit(schedule_info1)
+            await callback_query.message.answer(
+                await format_text(schedule_info1.text, callback_query),
+                reply_markup=ReplyKeyboardMarkup(keyboard=[[
+                    KeyboardButton(text=i['name'])
+                    for i in (
+                        await get_schedule_for_day(memb['class_id'],memb['groups_ids'], current_schedule[user_id])
+                    ).values() if i
+                ]]))
+            w_sch_info_lesson.append(user_id)
+        case 'sch_info_edit':
+            sch_set_se_csubj[user_id] = current_lesson[user_id]
+            await __edit(sch_subj_edit2)
         case 'schedule_right':
             current_schedule[user_id] += timedelta(days=1)
             await __edit(schedule)
@@ -261,6 +289,32 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(sch_subj_create3)
             w_sch_set_sc_groups.remove(user_id)
             w_sch_set_sc_schedule.append(user_id)
+        case 'sch_subj_edit':
+            await callback_query.message.answer(
+                await format_text(sch_subj_edit1.text, callback_query),
+                reply_markup=ReplyKeyboardMarkup(keyboard=[
+                    [KeyboardButton(text=i['name']) for i in (await get_subjects(class_id=memb['class_id']))]
+                ]))
+            w_sch_set_se_name.append(user_id)
+        case 'sch_subj_edit_name':
+            await __edit(sch_subj_edit_name1)
+            w_sch_set_se_new_name.append(user_id)
+        case 'sch_subj_edit_groups':
+            await __edit(sch_subj_edit_groups1)
+            w_sch_set_se_groups.append(user_id)
+        case 'sch_subj_edit_schedule':
+            await __edit(sch_subj_edit_schedule1)
+            w_sch_set_se_schedule.append(user_id)
+        case 'sch_subj_edit_office':
+            await __edit(sch_subj_edit_office1)
+            w_sch_set_se_office.append(user_id)
+        case 'sch_subj_edit_teacher':
+            await __edit(sch_subj_edit_teacher1)
+            w_sch_set_se_teacher.append(user_id)
+        case 'sch_subj_edit_general':
+            await edit_subject(sch_set_se_csubj[user_id]['id'], groups_ids=[])
+            await __edit(sch_subj_edit_groups2)
+            w_sch_set_se_groups.remove(user_id)
         case 'hw':
             await __edit(hw)
             
@@ -384,10 +438,51 @@ async def echo_handler(message: Message) -> None:
         del sch_set_sc_name[user_id]
     #
 
+    # Schedule settings subjects edit
+    elif user_id in w_sch_set_se_name:
+        sch_set_se_csubj[user_id] = x[0] if (x := await get_subjects(name=message.text)) else None
+
+        if sch_set_se_csubj[user_id]:
+            m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
+            await m.delete()
+            await __answer(sch_subj_edit2)
+            w_sch_set_se_name.remove(user_id)
+        else:
+            await message.answer('Не найдено такого предмета с данным названием')
+
+    elif user_id in w_sch_set_se_new_name:
+        await edit_subject(sch_set_se_csubj[user_id]['id'], name=message.text)
+        await __answer(sch_subj_edit_name2)
+        w_sch_set_se_new_name.remove(user_id)
+    elif user_id in w_sch_set_se_groups:
+        await edit_subject(sch_set_se_csubj[user_id]['id'],
+                           groups_ids=[(await get_group(name=i))['id'] for i in message.text.splitlines()])
+        await __answer(sch_subj_edit_groups2)
+        w_sch_set_se_groups.remove(user_id)
+    elif user_id in w_sch_set_se_schedule:
+        await edit_subject(sch_set_se_csubj[user_id]['id'], schedule=message.text)
+        await __answer(sch_subj_edit_schedule2)
+        w_sch_set_se_schedule.remove(user_id)
+    elif user_id in w_sch_set_se_office:
+        await edit_subject(sch_set_se_csubj[user_id]['id'], office=message.text)
+        await __answer(sch_subj_edit_office2)
+        w_sch_set_se_office.remove(user_id)
+    elif user_id in w_sch_set_se_teacher:
+        await edit_subject(sch_set_se_csubj[user_id]['id'], teacher=message.text)
+        await __answer(sch_subj_edit_teacher2)
+        w_sch_set_se_teacher.remove(user_id)
+    #
+
+    # Schedule info
+    elif user_id in w_sch_info_lesson:
+        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
+        await m.delete()
+        current_lesson[user_id] = x[0] if (x := await get_subjects(class_id=memb['class_id'], name=message.text)) else None
+        await __answer(schedule_info2)
+    #
+
 async def main() -> None:
     await init_all()
-    print('Initilizated database!')
-    
     print('Bot is online')
     await dp.start_polling(bot)
 
