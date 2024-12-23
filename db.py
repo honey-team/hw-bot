@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, time
 from typing import Any, Literal, Optional, overload
 
 from aiosqlite import connect
@@ -11,21 +11,25 @@ __all__ = (
     'create_member',
     'create_class',
     'create_group',
+    'create_bell',
     'create_subject',
     'get_members',
     'get_class',
     'get_group',
     'get_groups_by_ids',
+    'get_bells',
     'get_subjects',
     'edit_member',
     'edit_class',
     'edit_group',
     'edit_subject',
     'delete_group',
+    'delete_bells_schedule',
     'delete_subject',
     'assign_to_group',
     'unassign_to_group',
     'get_schedule_for_day',
+    'get_bells_schedule',
     'full_reset'
 )
 
@@ -143,6 +147,17 @@ async def init_groups():
     )
 
 
+async def init_bells():
+    await create_table_ine(
+        'bells',
+        'class_id int',
+        'type int', # 0 - food, 1-9 - number of lesson
+        'name text',
+        'start_time text', # ex. [8, 0] - 8:00
+        'end_time text' # same
+    )
+
+
 async def init_subjects():
     await create_table_ine(
         'subjects',
@@ -166,6 +181,7 @@ async def init_all():
     await init_members()
     await init_classes()
     await init_groups()
+    await init_bells()
     await init_subjects()
 #
 
@@ -207,6 +223,18 @@ async def create_group(class_id: int, name: str = ''):
         'groups',
         id=group_id,
         name=name
+    )
+
+
+async def create_bell(class_id: int, type: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], name: Optional[str] = None,
+                      start_time: tuple[int, int] = None, end_time: tuple[int, int] = None):
+    return await insert_into(
+        'bells',
+        class_id=class_id,
+        type=type,
+        name=name,
+        start_time=dumps(list(start_time)),
+        end_time=dumps(list(end_time))
     )
 
 
@@ -260,6 +288,22 @@ async def get_group(group_id: Optional[int] = None, name: Optional[str] = None):
 
 async def get_groups_by_ids(groups_ids: list[int]):
     return [(await get_group(i)) for i in groups_ids]
+
+
+async def get_bells(class_id: Optional[int] = None, type: Optional[int] = None, name: Optional[str] = None,
+                    start_time: Optional[tuple[int, int]] = None, end_time: Optional[tuple[int, int]] = None):
+    bells = await get_all_by('bells', where(
+        class_id=class_id,
+        type=type,
+        name=name,
+        start_time=start_time,
+        end_time=end_time
+    ))
+
+    for i in bells:
+        i['start_time'] = loads(i['start_time'])
+        i['end_time'] = loads(i['end_time'])
+    return bells
 
 
 async def get_subjects(
@@ -337,6 +381,10 @@ async def delete_group(group_id: int, class_id: Optional[int] = None, name: Opti
     ))
 
 
+async def delete_bells_schedule(class_id: int):
+    return await delete_from('bells', where(class_id=class_id))
+
+
 async def delete_subject(
         subject_id: Optional[int] = None,
         class_id: Optional[int] = None,
@@ -375,8 +423,20 @@ async def unassign_to_group(user_id: int, group_id: int):
     await edit_member(user_id, groups_ids=groups_ids)
 
 
+
+async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str | None]]:
+    ans = []
+    bells = (await get_bells(class_id)) or []
+    for i in bells:
+        s = i['start_time']
+        e = i['end_time']
+        ans.append((time(s[0], s[1], 0), time(e[0], e[1], 0), i['type'], i.get('name')))
+    return ans
+
+
+
 async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) -> dict[
-    Literal[1, 2, 3, 4, 5, 6, 7, 8, 9], dict[str, Any] | None]:
+    Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dict[str, Any] | None]:
     # get (even or odd)? week
     d = day
     weeks = [start_of_year + timedelta(days=7 * i) for i in range((d - date(d.year, 9, 2)).days // 7 + 1)]
@@ -394,6 +454,7 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) 
         2: None,
         3: None,
         4: None,
+        0: None,
         5: None,
         6: None,
         7: None,
@@ -401,21 +462,22 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) 
         9: None
     }
 
-    for subj in subjects:
-        is_in_groups_ids = subj['groups_ids'] == []
-        for i in groups_ids:
-            if i in subj['groups_ids']:
-                is_in_groups_ids = True
-        if is_in_groups_ids:
-            sch: str = subj['schedule']
-            for si in range(len(sch) // 2):
-                sday, slesson = int(sch[2 * si]), int(sch[2 * si + 1])
-                # 0, 1, 2, 3, 4 - odd
-                # 5, 6, 7, 8, 9 - even
-                if is_even:
-                    sday -= 5
-                if sday == day.weekday():
-                    result[slesson] = subj
+    if day.weekday() not in [5, 6]:
+        for subj in subjects:
+            is_in_groups_ids = subj['groups_ids'] == []
+            for i in groups_ids:
+                if i in subj['groups_ids']:
+                    is_in_groups_ids = True
+            if is_in_groups_ids:
+                sch: str = subj['schedule']
+                for si in range(len(sch) // 2):
+                    sday, slesson = int(sch[2 * si]), int(sch[2 * si + 1])
+                    # 0, 1, 2, 3, 4 - odd
+                    # 5, 6, 7, 8, 9 - even
+                    if is_even:
+                        sday -= 5
+                    if sday == day.weekday():
+                        result[slesson] = subj
     return result
 
 

@@ -368,3 +368,28 @@ class sch_subj_edit_teacher1:
 class sch_subj_edit_teacher2:
     text = 'Имя учителя изменено!'
     buttons = sch_subj_edit_markup
+
+class sch_bells:
+    text = 'Расписание звонков:\n{sch_bells}'
+    buttons = [
+        [
+            ('Изменить', 'sch_bells_edit'),
+        ],
+        [
+            schedule_settings_back_button,
+            home_button
+        ]
+    ]
+
+class sch_bells_edit1:
+    text = ('Введите новое расписание в следующем формате (каждая строка - отдельное расписание звонков):\n'
+            '{час_начала} {минута_начала} {час_конца} {минута_конца} {номер урока (0, если прием пищи)} {название (если прием пищи)}\n'
+            'пример: 8 0 8 45 1 - 1 урок 8:00-8:45')
+class sch_bells_edit2:
+    text = 'Расписание звонков обновлено!'
+    buttons = [
+        [
+            schedule_settings_back_button,
+            home_button
+        ],
+    ]

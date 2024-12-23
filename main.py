@@ -47,6 +47,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
     cl_name = 'ошибка'
     gr_name = ''
     subjects_text = ''
+    sch_bells = ''
     groups_text = ''
     members_text = ''
     members_count = 0
@@ -71,6 +72,13 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
             gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
             subjects_text += f'{i + 1}. {subj['name']}{gr_names_text}\n'
+        for st, st, tp, n in ((await get_bells_schedule(member['class_id'])) or []):
+            sch_bells += f'{st.strftime('%H:%M')}-{st.strftime('%H:%M')} '
+            if tp == 0:
+                sch_bells += n
+            else:
+                sch_bells += f'{tp} урок'
+            sch_bells += '\n'
 
     schedule_text = ''
     schedule_day = ''
@@ -97,20 +105,35 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             for j in range(7):
                 h.append(i + timedelta(days=j))
         
-        if d in h:
+        if d in h or d.weekday() in [5, 6]:
             schedule_text = 'Сегодня уроков нет (выходной)'
         else:
             sch = await get_schedule_for_day(member['class_id'], member['groups_ids'], d)
+            bells = await get_bells_schedule(member['class_id'])
+
+            def _get_bell(ln: int):
+                for b in bells:
+                    if b[2] == ln:
+                        return b
+                return [None, None, None, None]
+
             for lesson, subj in sch.items():
-                if not any(list(sch.values())[lesson - 1:]):
+                sch2 = sch.copy()
+                del sch2[0]
+                if lesson != 0 and not any(list(sch2.values())[list(sch2.keys()).index(lesson):]):
                     break
-                schedule_text += f'{lesson} урок: '
-                if subj:
-                    schedule_text += subj['name']
-                    if (x := subj.get('office')):
-                        schedule_text += f' в {x}'
+                st, et, tp, n = _get_bell(lesson)
+                schedule_text += f'{st.strftime('%H:%M')} - {et.strftime('%H:%M')} '
+                if lesson == 0:
+                    schedule_text += f'{n} 🍽️'
                 else:
-                    schedule_text += '❌'
+                    schedule_text += f'{lesson} урок: '
+                    if subj:
+                        schedule_text += subj['name']
+                        if (x := subj.get('office')):
+                            schedule_text += f' в {x}'
+                    else:
+                        schedule_text += '❌'
                 schedule_text += '\n'
 
     cl = current_lesson.get(user_id, {
@@ -132,6 +155,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'schedule_day': schedule_day,
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
+        'sch_bells': sch_bells or 'Расписания звонков нет',
         'cles.name': cl['name'] or 'ошибка',
         'cles.office': cl['office'] or 'не указан',
         'cles.teacher': cl['teacher'] or 'не указан',
@@ -190,6 +214,8 @@ w_sch_set_se_office = []
 w_sch_set_se_teacher = []
 
 sch_set_se_csubj = {}
+
+w_sch_be_bells = []
 
 # Homework
 @dp.callback_query()
@@ -315,6 +341,11 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await edit_subject(sch_set_se_csubj[user_id]['id'], groups_ids=[])
             await __edit(sch_subj_edit_groups2)
             w_sch_set_se_groups.remove(user_id)
+        case 'sch_bells':
+            await __edit(sch_bells)
+        case 'sch_bells_edit':
+            await __edit(sch_bells_edit1)
+            w_sch_be_bells.append(user_id)
         case 'hw':
             await __edit(hw)
             
@@ -479,6 +510,25 @@ async def echo_handler(message: Message) -> None:
         await m.delete()
         current_lesson[user_id] = x[0] if (x := await get_subjects(class_id=memb['class_id'], name=message.text)) else None
         await __answer(schedule_info2)
+    #
+
+    # Bells edit
+    elif user_id in w_sch_be_bells:
+        await delete_bells_schedule(memb['class_id'])
+        bells = [i.split(' ', 5) for i in message.text.splitlines()]
+
+        for b in bells: # sh, sm, eh, em, tp, n
+            for i in range(5):
+                b[i] = int(b[i])
+            st = (b[0], b[1])
+            et = (b[2], b[3])
+            if b[4] == 0:
+                await create_bell(memb['class_id'], b[4], b[5], st, et)
+            else:
+                await create_bell(memb['class_id'], b[4], start_time=st, end_time=et)
+        await __answer(sch_bells_edit2)
+        w_sch_be_bells.remove(user_id)
+
     #
 
 async def main() -> None:
