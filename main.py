@@ -237,8 +237,7 @@ w_sch_be_bells = []
 
 w_hw_o_name = []
 
-w_hw_oe_text = []
-w_hw_oe_files = []
+w_hw_oe = []
 hw_oe_text = {}
 hw_oe_files = {}
 
@@ -373,7 +372,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             w_sch_be_bells.append(user_id)
         case 'hw':
             if current_date.get(user_id) is None:
-                current_date[user_id] = date.today()
+                current_date[user_id] = date.today() + timedelta(days=1)
             await __edit(hw)
         case 'hw_left':
             current_date[user_id] -= timedelta(days=1)
@@ -387,31 +386,22 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await callback_query.message.answer(await format_text(hw_open1.text, callback_query), reply_markup=ReplyKeyboardMarkup(
                 keyboard=[[KeyboardButton(text=i) for i in schn]], one_time_keyboard=True))
             w_hw_o_name.append(user_id)
-        case 'hw_open_edit':
-            await __edit(hw_open_edit1)
-            w_hw_oe_text.append(user_id)
         case 'back_to_hw':
             w_hw_o_name.remove(user_id)
             await __edit(hw)
-        case 'hw_open_edit_skip_text':
-            hw_oe_text[user_id] = None
-            await __edit(hw_open_edit2)
+        case 'hw_open_edit':
+            await __edit(hw_open_edit1)
             hw_oe_files[user_id] = []
-            w_hw_oe_text.remove(user_id)
-            w_hw_oe_files.append(user_id)
-        case 'hw_open_edit_end_files':
-            if hw_oe_text[user_id] is None:
-                await callback_query.message.edit_text('Вы должны указать либо текст, либо файлы, либо и текст и файлы.'
-                                                       'Ничего указать вы не можете')
+            w_hw_oe.append(user_id)
+        case 'hw_open_edit_end':
+            _hw = await get_hw(subject_id=current_lesson[user_id]['id'], d=current_date[user_id])
+            if _hw:
+                await edit_hw(_hw['id'], text=hw_oe_text.get(user_id, None), files=hw_oe_files[user_id])
             else:
-                w_hw_oe_files.remove(user_id)
-                _hw = await get_hw(subject_id=current_lesson[user_id]['id'], d=current_date[user_id])
-                if _hw:
-                    await edit_hw(_hw['id'], text=hw_oe_text[user_id] or None, filepaths=hw_oe_files[user_id])
-                else:
-                    await create_hw(current_lesson[user_id]['id'], hw_oe_text[user_id] or None,
-                                    d=current_date[user_id], files=hw_oe_files[user_id])
-                await __edit(hw_open_edit3)
+                await create_hw(current_lesson[user_id]['id'], hw_oe_text.get(user_id, None),
+                                d=current_date[user_id], files=hw_oe_files[user_id])
+            await __edit(hw_open_edit2)
+            w_hw_oe.remove(user_id)
         case 'hw_return_open':
             await __edit(hw_open2)
         case 'hw_complete':
@@ -621,19 +611,18 @@ async def echo_handler(message: Message) -> None:
     #
 
     # Hw open edit
-    elif user_id in w_hw_oe_text:
-        hw_oe_text[user_id] = message.text
-        await __answer(hw_open_edit2)
-        hw_oe_files[user_id] = []
-        w_hw_oe_text.remove(user_id)
-        w_hw_oe_files.append(user_id)
-    elif user_id in w_hw_oe_files:
+    elif user_id in w_hw_oe:
+        if message.text:
+            hw_oe_text[user_id] = message.text
+        elif message.caption:
+            hw_oe_text[user_id] = message.caption
+        if not hw_oe_files.get(user_id):
+            hw_oe_files[user_id] = []
+
         if message.photo:
-            file_id = message.photo[0].file_id
+            hw_oe_files[user_id].append(message.photo[0].file_id)
         elif message.document:
-            file_id = message.document.file_id
-        print(file_id)
-        hw_oe_files[user_id].append(file_id)
+            hw_oe_files[user_id].append(message.document.file_id)
     #
 
 async def main() -> None:
