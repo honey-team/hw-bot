@@ -13,23 +13,28 @@ __all__ = (
     'create_group',
     'create_bell',
     'create_subject',
+    'create_hw',
     'get_members',
     'get_class',
     'get_group',
     'get_groups_by_ids',
     'get_bells',
     'get_subjects',
+    'get_hw',
     'edit_member',
     'edit_class',
     'edit_group',
     'edit_subject',
+    'edit_hw',
     'delete_group',
     'delete_bells_schedule',
     'delete_subject',
     'assign_to_group',
     'unassign_to_group',
-    'get_schedule_for_day',
+    'hw_mark_completed',
     'get_bells_schedule',
+    'get_schedule_for_day',
+    'get_hw_for_day',
     'full_reset'
 )
 
@@ -177,12 +182,25 @@ async def init_subjects():
     )
 
 
+async def init_hw():
+    await create_table_ine(
+        'hw',
+        'id int',
+        'subject_id int',
+        'text text',
+        'date text', # ex. 1511 - 15 november
+        'files text', # ex. [b'hello, world', b'hi!']
+        'completed text' # ex. [14874383, 3537396] ids of users, which completed this hw
+    )
+
+
 async def init_all():
     await init_members()
     await init_classes()
     await init_groups()
     await init_bells()
     await init_subjects()
+    await init_hw()
 #
 
 # Create
@@ -250,6 +268,19 @@ async def create_subject(class_id: int, groups_ids: list[int], name: str, schedu
         schedule=schedule,
         office=office,
         teacher=teacher
+    )
+
+
+async def create_hw(subject_id: int, text: Optional[str] = None, d: date = None, files: list[str] = []):
+    hw_id = await get_next_id('hw')
+    return await insert_into(
+        'hw',
+        id=hw_id,
+        subject_id=subject_id,
+        text=text,
+        date=d.strftime('%d%m') if d else None,
+        files=dumps(files),
+        completed='[]'
     )
 #
 
@@ -328,6 +359,22 @@ async def get_subjects(
         for i in subj:
             i['groups_ids'] = loads(i['groups_ids'])
     return subj
+
+async def get_hw(hw_id: Optional[int] = None, subject_id: Optional[int] = None, text: Optional[str] = None,
+                 d: Optional[date] = None, files: Optional[list[str]] = None, completed: Optional[list[int]] = None):
+    hw = await get_one_by(
+        'hw', where(
+        id=hw_id,
+        subject_id=subject_id,
+        text=text,
+        date=d.strftime('%d%m') if d else None,
+        files=dumps(files) if files else None,
+        completed=dumps(completed) if completed else None
+    ))
+    if hw:
+        hw['files'] = loads(hw['files'])
+        hw['completed'] = loads(hw['completed'])
+    return hw
 #
 
 # Edit
@@ -364,6 +411,16 @@ async def edit_subject(
         office=office,
         teacher=teacher
     ), where(id=subject_id))
+
+async def edit_hw(hw_id: int, subject_id: Optional[int] = None, text: Optional[str] = None,
+                  d: Optional[date] = None, files: Optional[list[str]] = None, completed: Optional[list[int]] = None):
+    await update('hw', values(
+        subject_id=subject_id,
+        text=text,
+        date=d.strftime('%d%m') if d else None,
+        files=dumps(files) if files else None,
+        completed=dumps(completed) if completed else None
+    ), where(id=hw_id))
 #
 
 # Delete
@@ -423,6 +480,13 @@ async def unassign_to_group(user_id: int, group_id: int):
     await edit_member(user_id, groups_ids=groups_ids)
 
 
+async def hw_mark_completed(user_id: int, hw_id: int):
+    hw = await get_hw(hw_id)
+    if hw:
+        completed = hw['completed']
+        completed.append(user_id)
+        await edit_hw(hw_id, completed=completed)
+
 
 async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str | None]]:
     ans = []
@@ -435,8 +499,8 @@ async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str |
 
 
 
-async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) -> dict[
-    Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dict[str, Any] | None]:
+async def get_schedule_for_day(class_id: int, groups_ids: list[int],
+                               day: date) -> dict[int, dict[str, Any] | None]:
     # get (even or odd)? week
     d = day
     weeks = [start_of_year + timedelta(days=7 * i) for i in range((d - date(d.year, 9, 2)).days // 7 + 1)]
@@ -462,7 +526,7 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) 
         9: None
     }
 
-    if day.weekday() not in [5, 6]:
+    if day.weekday() not in [5, 6]: # If not weekend
         for subj in subjects:
             is_in_groups_ids = subj['groups_ids'] == []
             for i in groups_ids:
@@ -479,6 +543,16 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int], day: date) 
                     if sday == day.weekday():
                         result[slesson] = subj
     return result
+
+
+async def get_hw_for_day(class_id: int, groups_ids: list[int],
+                         day: date) -> dict[int, dict[str, Any] | None]:
+    schedule = await get_schedule_for_day(class_id, groups_ids, day)
+    del schedule[0]
+    return {
+        cn: (await get_hw(subject_id=subj['id'], d=day)) if subj else None
+        for cn, subj in schedule.items()
+    }
 
 
 def full_reset():

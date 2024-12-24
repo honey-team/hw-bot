@@ -21,6 +21,7 @@ schedule_settings_back_button = (back_button_text, 'schedule_settings')
 home_button = ('↩️ На главную', 'home')
 settings_button = ('⚙️ Настройки', 'cl_settings')
 
+hw_button = ('📆 ДЗ', 'hw')
 schedule_button = ('🗓️ Расписание', 'schedule')
 
 home_button_markup = [
@@ -69,7 +70,7 @@ class home:
     text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
     buttons = [
         [
-            ('📆 ДЗ', 'hw'),
+            hw_button,
             schedule_button
         ],
         [
@@ -210,23 +211,67 @@ class cl_groups_delete2:
 
 
 class hw:
-    text = 'Домашнее задание'
+    text = 'Домашнее задание на {current_day}\n{hw_text}'
     buttons = [
         [
             ('⬅️', 'hw_left'),
+            ('📆', 'hw_tommorrow'),
             ('📖', 'hw_open'),
             ('✅', 'hw_complete'),
             ('➡️', 'hw_right')
         ],
         [
-            ('✍️ Записать', 'hw_write'),
             home_button,
+        ]
+    ]
+
+class hw_open1:
+    text = 'Выберите предмет для открытия'
+    buttons = [
+        [
+            (back_button_text, 'back_to_hw'),
+        ]
+    ]
+class hw_open2:
+    text = 'Домашнее задание на {current_day} по предмету {current_lesson}\n{hw}'
+    buttons = [
+        [
+            ('✍️ Изменить', 'hw_open_edit'),
+            (back_button_text, 'hw')
+        ]
+    ]
+
+class hw_open_edit1:
+    text = ('Введите текст домашнего задания или, если хотите, можете пропустить данный пункт, нажав на кнопку ниже, '
+            'чтобы указать как ДЗ только фотографии или файлы')
+    buttons = [
+        [
+            ('❌', 'hw_open_edit_skip_text'),
+        ]
+    ]
+
+class hw_open_edit2:
+    text = 'Отправьте фотографии или файлы. Когда закончите, нажмите на кнопку'
+    buttons = [
+        [
+            ('❌', 'hw_open_edit_end_files'),
+        ]
+    ]
+class hw_open_edit3:
+    text = 'Готово!'
+    buttons = [
+        [
+            (back_button_text, 'hw_return_open')
+        ],
+        [
+            hw_button,
+            home_button
         ]
     ]
     
 
 class schedule:
-    text = 'Расписание на {schedule_day}\n{schedule_text}'
+    text = 'Расписание на {current_day}\n{schedule_text}'
     buttons = [
         [
             ('⬅️⬅️', 'schedule_left_week'),

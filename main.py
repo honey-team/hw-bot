@@ -13,13 +13,13 @@ from aiogram.types import (
     InlineKeyboardButton,
     CallbackQuery,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     KeyboardButton
 )
 from aiogram.exceptions import TelegramBadRequest
 
 from config import *
 from db import *
+from db import get_hw_for_day
 
 TOKEN = getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -72,8 +72,8 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
             gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
             subjects_text += f'{i + 1}. {subj['name']}{gr_names_text}\n'
-        for st, st, tp, n in ((await get_bells_schedule(member['class_id'])) or []):
-            sch_bells += f'{st.strftime('%H:%M')}-{st.strftime('%H:%M')} '
+        for st, et, tp, n in ((await get_bells_schedule(member['class_id'])) or []):
+            sch_bells += f'{st.strftime('%H:%M')}-{et.strftime('%H:%M')} '
             if tp == 0:
                 sch_bells += n
             else:
@@ -81,7 +81,10 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             sch_bells += '\n'
 
     schedule_text = ''
-    schedule_day = ''
+    hw_text = ''
+    current_day = ''
+    les = current_lesson.get(user_id, {})
+    hw = {}
     
     weekdays = [
         'понедельник', 'вторник', 'среда',
@@ -95,9 +98,9 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'октября', 'ноября', 'декабря'
     ]
     
-    if current_schedule.get(user_id):
-        d = current_schedule[user_id]
-        schedule_day = f'{d.day} {months[d.month-1]} {d.year} ({weekdays[d.weekday()]})'
+    if current_date.get(user_id):
+        d = current_date[user_id]
+        current_day = f'{d.day} {months[d.month-1]} {d.year} ({weekdays[d.weekday()]})'
         
         h = []
         
@@ -106,9 +109,12 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 h.append(i + timedelta(days=j))
         
         if d in h or d.weekday() in [5, 6]:
-            schedule_text = 'Сегодня уроков нет (выходной)'
+            schedule_text = hw_text = 'Сегодня уроков нет (выходной)'
         else:
             sch = await get_schedule_for_day(member['class_id'], member['groups_ids'], d)
+            hw_sch = await get_hw_for_day(member['class_id'], member['groups_ids'], d)
+            hw = (await get_hw(subject_id=les.get('id', 0), d=d)) or {}
+
             bells = await get_bells_schedule(member['class_id'])
 
             def _get_bell(ln: int):
@@ -123,17 +129,26 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 if lesson != 0 and not any(list(sch2.values())[list(sch2.keys()).index(lesson):]):
                     break
                 st, et, tp, n = _get_bell(lesson)
-                schedule_text += f'{st.strftime('%H:%M')} - {et.strftime('%H:%M')} '
+                if st and et:
+                    schedule_text += html.code(f'{st.strftime('%H:%M')} - {et.strftime('%H:%M')} ')
                 if lesson == 0:
                     schedule_text += f'{n} 🍽️'
                 else:
-                    schedule_text += f'{lesson} урок: '
+                    schedule_text += f'{lesson}. '
+                    hw_text += f'{lesson}. '
                     if subj:
-                        schedule_text += subj['name']
-                        if (x := subj.get('office')):
+                        schedule_text += html.bold(subj['name'])
+                        hw_text += html.bold(subj.get('name', '❌'))
+                        if x := subj.get('office'):
                             schedule_text += f' в {x}'
                     else:
                         schedule_text += '❌'
+                        hw_text += '❌'
+                    if hw_sch[lesson]:
+                        hw_text += ': ' + hw_sch[lesson].get('text', 'Прикреплены файлы')
+                    elif subj:
+                        hw_text += ': Нет домашнего задания'
+                    hw_text += '\n'
                 schedule_text += '\n'
 
     cl = current_lesson.get(user_id, {
@@ -152,7 +167,10 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'cl_groups_members_text': groups_text,
         'cl_members_num': members_count,
         'cl_groups_list': ', '.join(groups_list) if groups_list else 'нет',
-        'schedule_day': schedule_day,
+        'current_day': current_day,
+        'hw_text': hw_text or 'Сегодня уроков нет',
+        'current_lesson': les.get('name', 'не найдено'),
+        'hw': hw.get('text', 'Нет текста'),
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
         'sch_bells': sch_bells or 'Расписания звонков нет',
@@ -201,7 +219,7 @@ w_sch_set_sc_schedule = []
 sch_set_sc_name = {}
 sch_set_sc_groups_ids = {}
 
-current_schedule: dict[int, date] = {}
+current_date: dict[int, date] = {}
 
 w_sch_info_lesson = []
 current_lesson: dict[int, dict[str, Any]] = {}
@@ -216,6 +234,13 @@ w_sch_set_se_teacher = []
 sch_set_se_csubj = {}
 
 w_sch_be_bells = []
+
+w_hw_o_name = []
+
+w_hw_oe_text = []
+w_hw_oe_files = []
+hw_oe_text = {}
+hw_oe_files = {}
 
 # Homework
 @dp.callback_query()
@@ -255,7 +280,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             cl = await get_class((await get_members(user_id))[0]['class_id'])
             await callback_query.message.answer(await format_text(cl_groups_edit1.text, callback_query), reply_markup=ReplyKeyboardMarkup(keyboard=[
                 [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
-            ]))
+            ], one_time_keyboard=True))
             w_cl_ge_name.append(user_id)
         case 'cl_groups_edit_name':
             await __edit(cl_groups_edit_name1)
@@ -268,20 +293,20 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             cl = await get_class((await get_members(user_id))[0]['class_id'])
             await callback_query.message.answer(await format_text(cl_groups_delete1.text, callback_query), reply_markup=ReplyKeyboardMarkup(keyboard=[
                 [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
-            ]))
+            ], one_time_keyboard=True))
             w_cl_gd_name.append(user_id)
         case 'schedule':
-            if current_schedule.get(user_id) is None:
-                current_schedule[user_id] = date.today()
+            if current_date.get(user_id) is None:
+                current_date[user_id] = date.today()
             await __edit(schedule)
         case 'schedule_left_week':
-            current_schedule[user_id] -= timedelta(days=7)
+            current_date[user_id] -= timedelta(days=7)
             await __edit(schedule)
         case 'schedule_left':
-            current_schedule[user_id] -= timedelta(days=1)
+            current_date[user_id] -= timedelta(days=1)
             await __edit(schedule)
         case 'schedule_today':
-            current_schedule[user_id] = date.today()
+            current_date[user_id] = date.today()
             await __edit(schedule)
         case 'schedule_info':
             await __edit(schedule_info1)
@@ -290,18 +315,18 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 reply_markup=ReplyKeyboardMarkup(keyboard=[[
                     KeyboardButton(text=i['name'])
                     for i in (
-                        await get_schedule_for_day(memb['class_id'],memb['groups_ids'], current_schedule[user_id])
+                        await get_schedule_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])
                     ).values() if i
-                ]]))
+                ]], one_time_keyboard=True))
             w_sch_info_lesson.append(user_id)
         case 'sch_info_edit':
             sch_set_se_csubj[user_id] = current_lesson[user_id]
             await __edit(sch_subj_edit2)
         case 'schedule_right':
-            current_schedule[user_id] += timedelta(days=1)
+            current_date[user_id] += timedelta(days=1)
             await __edit(schedule)
         case 'schedule_right_week':
-            current_schedule[user_id] += timedelta(days=7)
+            current_date[user_id] += timedelta(days=7)
             await __edit(schedule)
         case 'schedule_settings':
             await __edit(schedule_settings)
@@ -320,7 +345,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 await format_text(sch_subj_edit1.text, callback_query),
                 reply_markup=ReplyKeyboardMarkup(keyboard=[
                     [KeyboardButton(text=i['name']) for i in (await get_subjects(class_id=memb['class_id']))]
-                ]))
+                ], one_time_keyboard=True))
             w_sch_set_se_name.append(user_id)
         case 'sch_subj_edit_name':
             await __edit(sch_subj_edit_name1)
@@ -347,6 +372,52 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(sch_bells_edit1)
             w_sch_be_bells.append(user_id)
         case 'hw':
+            if current_date.get(user_id) is None:
+                current_date[user_id] = date.today()
+            await __edit(hw)
+        case 'hw_left':
+            current_date[user_id] -= timedelta(days=1)
+            await __edit(hw)
+        case 'hw_tommorrow':
+            current_date[user_id] = date.today() + timedelta(days=1)
+            await __edit(hw)
+        case 'hw_open':
+            sch = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])
+            schn = list(set([i['name'] for i in sch.values() if i]))
+            await callback_query.message.answer(await format_text(hw_open1.text, callback_query), reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text=i) for i in schn]], one_time_keyboard=True))
+            w_hw_o_name.append(user_id)
+        case 'hw_open_edit':
+            await __edit(hw_open_edit1)
+            w_hw_oe_text.append(user_id)
+        case 'back_to_hw':
+            w_hw_o_name.remove(user_id)
+            await __edit(hw)
+        case 'hw_open_edit_skip_text':
+            hw_oe_text[user_id] = None
+            await __edit(hw_open_edit2)
+            hw_oe_files[user_id] = []
+            w_hw_oe_text.remove(user_id)
+            w_hw_oe_files.append(user_id)
+        case 'hw_open_edit_end_files':
+            if hw_oe_text[user_id] is None:
+                await callback_query.message.edit_text('Вы должны указать либо текст, либо файлы, либо и текст и файлы.'
+                                                       'Ничего указать вы не можете')
+            else:
+                w_hw_oe_files.remove(user_id)
+                _hw = await get_hw(subject_id=current_lesson[user_id]['id'], d=current_date[user_id])
+                if _hw:
+                    await edit_hw(_hw['id'], text=hw_oe_text[user_id] or None, filepaths=hw_oe_files[user_id])
+                else:
+                    await create_hw(current_lesson[user_id]['id'], hw_oe_text[user_id] or None,
+                                    d=current_date[user_id], files=hw_oe_files[user_id])
+                await __edit(hw_open_edit3)
+        case 'hw_return_open':
+            await __edit(hw_open2)
+        case 'hw_complete':
+            ...
+        case 'hw_right':
+            current_date[user_id] += timedelta(days=1)
             await __edit(hw)
             
 
@@ -412,8 +483,6 @@ async def echo_handler(message: Message) -> None:
     # Group edit
     elif user_id in w_cl_ge_name:
         cl_ge_id[user_id] = (await get_group(name=message.text))['id']
-        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
-        await m.delete()
         await __answer(cl_groups_edit2, ctx_g=message.text)
         w_cl_ge_name.remove(user_id)
     
@@ -439,8 +508,6 @@ async def echo_handler(message: Message) -> None:
     
     # Group delete
     elif user_id in w_cl_gd_name:
-        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
-        await m.delete()
         gr_id = x['id'] if (x := await get_group(name=message.text)) else None
         if gr_id:
             await delete_group(gr_id, memb['class_id'])
@@ -474,8 +541,6 @@ async def echo_handler(message: Message) -> None:
         sch_set_se_csubj[user_id] = x[0] if (x := await get_subjects(name=message.text)) else None
 
         if sch_set_se_csubj[user_id]:
-            m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
-            await m.delete()
             await __answer(sch_subj_edit2)
             w_sch_set_se_name.remove(user_id)
         else:
@@ -506,8 +571,6 @@ async def echo_handler(message: Message) -> None:
 
     # Schedule info
     elif user_id in w_sch_info_lesson:
-        m = await message.answer('...', reply_markup=ReplyKeyboardRemove())
-        await m.delete()
         current_lesson[user_id] = x[0] if (x := await get_subjects(class_id=memb['class_id'], name=message.text)) else None
         await __answer(schedule_info2)
     #
@@ -528,7 +591,49 @@ async def echo_handler(message: Message) -> None:
                 await create_bell(memb['class_id'], b[4], start_time=st, end_time=et)
         await __answer(sch_bells_edit2)
         w_sch_be_bells.remove(user_id)
+    #
 
+    # Hw open
+    elif user_id in w_hw_o_name:
+        subj = await get_subjects(name=message.text)
+
+        if subj:
+            current_lesson[user_id] = subj[0]
+            _hw = await get_hw(subject_id=subj[0]['id'], d=current_date[user_id])
+
+            if _hw and _hw.get('files', []):
+                for f in _hw.get('files', []):
+                    try:
+                        await message.answer_document(f)
+                    except TelegramBadRequest:
+                        await message.answer_photo(f)
+
+            await __answer(hw_open2)
+            w_hw_o_name.remove(user_id)
+        else:
+            await message.answer(await format_text('Попробуйте еще раз\n' + hw_open1.text, message),
+                                 reply_markup=ReplyKeyboardMarkup(
+                                    keyboard=[[
+                                        KeyboardButton(text=i['name'])
+                                        for i in (await get_schedule_for_day(memb['class_id'], memb['groups_ids'],
+                                                                             current_date[user_id])).values()
+                                ]], one_time_keyboard=True))
+    #
+
+    # Hw open edit
+    elif user_id in w_hw_oe_text:
+        hw_oe_text[user_id] = message.text
+        await __answer(hw_open_edit2)
+        hw_oe_files[user_id] = []
+        w_hw_oe_text.remove(user_id)
+        w_hw_oe_files.append(user_id)
+    elif user_id in w_hw_oe_files:
+        if message.photo:
+            file_id = message.photo[0].file_id
+        elif message.document:
+            file_id = message.document.file_id
+        print(file_id)
+        hw_oe_files[user_id].append(file_id)
     #
 
 async def main() -> None:
