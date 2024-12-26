@@ -67,7 +67,9 @@ class wc_join_class:
 
 
 class home:
-    text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + 'Выполнено {hw_completed}/{hw_all} домашних заданий.'
+    if_not_holiday = 'Выполнено {hw_completed} из {hw_all} домашних заданий'
+    if_holiday = 'Завтра нет занятий'
+    text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + '{home.holiday}'
     buttons = [
         [
             hw_button,
@@ -233,11 +235,24 @@ class hw_open1:
         ]
     ]
 class hw_open2:
-    text = 'Домашнее задание на {current_day} по предмету {current_lesson}\n{hw}'
+    text = 'Домашнее задание на {current_day} по предмету {current_lesson}{hw_is_completed}\n{hw}'
     buttons = [
         [
             ('✍️ Изменить', 'hw_open_edit'),
+            ('✅ Выполнено', 'hw_open_complete'),
             (back_button_text, 'hw')
+        ]
+    ]
+
+class hw_open_complete:
+    text = 'Готово!'
+    buttons = [
+        [
+            (back_button_text, 'hw_return_open')
+        ],
+        [
+            hw_button,
+            home_button
         ]
     ]
 
@@ -246,7 +261,7 @@ class hw_open_edit1:
             'Когда закончите, нажмите на кнопку')
     buttons = [
         [
-            ('❌', 'hw_open_edit_end'),
+            ('✅', 'hw_open_edit_end'),
         ]
     ]
 class hw_open_edit2:
@@ -255,6 +270,26 @@ class hw_open_edit2:
         [
             (back_button_text, 'hw_return_open')
         ],
+        [
+            hw_button,
+            home_button
+        ]
+    ]
+
+class hw_complete1:
+    text = 'Выберите домашнее задание для того, чтобы отметить как выполненное/невыполненное'
+    buttons = [
+        [
+            (back_button_text, 'back_to_hw')
+        ],
+        [
+            hw_button,
+            home_button
+        ]
+    ]
+class hw_complete2:
+    text = 'Готово!'
+    buttons = [
         [
             hw_button,
             home_button

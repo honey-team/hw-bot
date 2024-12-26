@@ -32,6 +32,7 @@ __all__ = (
     'assign_to_group',
     'unassign_to_group',
     'hw_mark_completed',
+    'hw_mark_uncompleted',
     'get_bells_schedule',
     'get_schedule_for_day',
     'get_hw_for_day',
@@ -418,8 +419,8 @@ async def edit_hw(hw_id: int, subject_id: Optional[int] = None, text: Optional[s
         subject_id=subject_id,
         text=text,
         date=d.strftime('%d%m') if d else None,
-        files=dumps(files) if files else None,
-        completed=dumps(completed) if completed else None
+        files=dumps(files) if files is not None else None,
+        completed=dumps(completed) if completed is not None else None
     ), where(id=hw_id))
 #
 
@@ -483,9 +484,16 @@ async def unassign_to_group(user_id: int, group_id: int):
 async def hw_mark_completed(user_id: int, hw_id: int):
     hw = await get_hw(hw_id)
     if hw:
+        await edit_hw(hw_id, completed=list(set(hw['completed'] + [user_id])))
+
+
+async def hw_mark_uncompleted(user_id: int, hw_id: int):
+    hw = await get_hw(hw_id)
+    if hw:
         completed = hw['completed']
-        completed.append(user_id)
-        await edit_hw(hw_id, completed=completed)
+        if user_id in completed:
+            completed.remove(user_id)
+            await edit_hw(hw_id, completed=completed)
 
 
 async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str | None]]:

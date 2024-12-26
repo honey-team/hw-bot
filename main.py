@@ -19,7 +19,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from config import *
 from db import *
-from db import get_hw_for_day
+from db import get_hw_for_day, hw_mark_uncompleted
 
 TOKEN = getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -83,6 +83,8 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
     schedule_text = ''
     hw_text = ''
     current_day = ''
+    hw_completed = 0
+    hw_all = 0
     les = current_lesson.get(user_id, {})
     hw = {}
     
@@ -145,11 +147,23 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                         schedule_text += '❌'
                         hw_text += '❌'
                     if hw_sch[lesson]:
-                        hw_text += ': ' + hw_sch[lesson].get('text', 'Прикреплены файлы')
+                        hw_text += ': '
+                        tmp = hw_sch[lesson].get('text', 'Прикреплены файлы')
+                        hw_text += html.strikethrough(tmp)\
+                                   if member['id'] in hw_sch[lesson].get('completed', [])\
+                                   else tmp
                     elif subj:
                         hw_text += ': Нет домашнего задания'
                     hw_text += '\n'
                 schedule_text += '\n'
+
+    tommorrow = date.today() + timedelta(days=1)
+    hw_tommorrow = await get_hw_for_day(member['class_id'], member['groups_ids'], tommorrow)
+    for _hw in hw_tommorrow.values():
+        if _hw is not None:
+            hw_all += 1
+            if member['id'] in _hw.get('completed', []):
+                hw_completed += 1
 
     cl = current_lesson.get(user_id, {
         'name': None,
@@ -157,10 +171,11 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'teacher': None
     })
     general_info = {
+        'home.holiday': home.if_holiday if tommorrow.weekday() in [5, 6] else home.if_not_holiday,
         'user_name': user_name,
         'user_id': message.from_user.id if message else 'ошибка',
-        'hw_completed': '0',
-        'hw_all': '0',
+        'hw_completed': hw_completed,
+        'hw_all': hw_all,
         'current_class': cl_name,
         'current_group': ' ' + gr_name if gr_name else '',
         'cl_members_text': members_text,
@@ -170,6 +185,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'current_day': current_day,
         'hw_text': hw_text or 'Сегодня уроков нет',
         'current_lesson': les.get('name', 'не найдено'),
+        'hw_is_completed': ' ✅' if member['id'] in hw.get('completed', []) else '',
         'hw': hw.get('text', 'Нет текста'),
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
@@ -240,6 +256,8 @@ w_hw_o_name = []
 w_hw_oe = []
 hw_oe_text = {}
 hw_oe_files = {}
+
+w_hw_c_name = []
 
 # Homework
 @dp.callback_query()
@@ -404,8 +422,23 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             w_hw_oe.remove(user_id)
         case 'hw_return_open':
             await __edit(hw_open2)
+        case 'hw_open_complete':
+            _hw = await get_hw(subject_id= current_lesson[user_id]['id'], d=current_date[user_id])
+
+            if memb['id'] in _hw['completed']:
+                await hw_mark_uncompleted(memb['id'], _hw['id'])
+            else:
+                await hw_mark_completed(memb['id'], _hw['id'])
+            await __edit(hw_open_complete)
         case 'hw_complete':
-            ...
+            sch = (await get_hw_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])).values()
+            schn = set()
+            for i in sch:
+                if i:
+                    schn.add((await get_subjects(i['subject_id']))[0]['name'])
+            await callback_query.message.answer(await format_text(hw_complete1.text, callback_query), reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text=i) for i in list(schn)]], one_time_keyboard=True))
+            w_hw_c_name.append(user_id)
         case 'hw_right':
             current_date[user_id] += timedelta(days=1)
             await __edit(hw)
@@ -623,6 +656,32 @@ async def echo_handler(message: Message) -> None:
             hw_oe_files[user_id].append(message.photo[0].file_id)
         elif message.document:
             hw_oe_files[user_id].append(message.document.file_id)
+    #
+
+    # Hw complete
+    elif user_id in w_hw_c_name:
+        subj = await get_subjects(name=message.text)
+
+        if subj:
+            subj = subj[0]
+            _hw = await get_hw(subject_id=subj['id'], d=current_date[user_id])
+
+            if memb['id'] in _hw['completed']:
+                await hw_mark_uncompleted(memb['id'], _hw['id'])
+            else:
+                await hw_mark_completed(memb['id'], _hw['id'])
+            await __answer(hw_complete2)
+            w_hw_c_name.remove(user_id)
+        else:
+            sch = (await get_hw_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])).values()
+            schn = set()
+            for i in sch:
+                if i:
+                    schn.add((await get_subjects(i['subject_id']))[0]['name'])
+            await message.answer(await format_text('Попробуйте еще раз\n' + hw_complete1.text, message),
+                                                reply_markup=ReplyKeyboardMarkup(
+                                                keyboard=[[KeyboardButton(text=i) for i in list(schn)]],
+                                                one_time_keyboard=True))
     #
 
 async def main() -> None:
