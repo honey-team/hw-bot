@@ -61,8 +61,10 @@ class wc_create_class3:
 
 
 class wc_join_class:
-    text = 'Чтобы вступить в класс, скиньте ваши айди любому участнику класса, а он добавит вас через кнопку "Добавить".\n\nВаш айди: '\
-            + html.code('{user_id}\n')
+    text = (
+        'Чтобы вступить в класс, скиньте ваши айди любому участнику класса, а он добавит вас через кнопку "Добавить".'
+        '\n\nВаш айди: '
+    ) + html.code('{user_id}\n')
     buttons = home_button_markup
 
 
@@ -72,6 +74,9 @@ class home:
     text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + '{home.holiday}'
     buttons = [
         [
+            ('⏰ Сейчас', 'now')
+        ],
+        [
             hw_button,
             schedule_button
         ],
@@ -79,6 +84,20 @@ class home:
             settings_button,
         ]
     ]
+
+
+class now:
+    is_break = 'Перемена'
+    is_lesson = '{now_lesson}{now_office}'
+    is_lesson_info = ('Кабинет: ' + html.bold('{now_office}') +
+                      '\nУчитель: ' + html.bold('{now_teacher}'))
+    is_break_info = 'Следующий урок - ' + html.bold('{now_next_lesson}\n')
+
+    text = '{now.bell} {now.lesson_or_break} ({minutes_to_end} минут до конца)\n{now.info}\n'
+    text_lessons_ended = '❌ Уроки закончились'
+    text_fallback_bells = '⚠️ Настройте расписание звонков в настройках расписания.'
+
+    buttons = home_button_markup
 
 
 class cl_settings:
@@ -240,7 +259,7 @@ class hw_open2:
         [
             ('✍️ Изменить', 'hw_open_edit'),
             ('✅ Выполнено', 'hw_open_complete'),
-            (back_button_text, 'hw')
+            (back_button_text, 'hw_return')
         ]
     ]
 

@@ -1,4 +1,4 @@
-from datetime import date, timedelta, time
+from datetime import date, datetime, timedelta, time
 from typing import Any, Literal, Optional, overload
 
 from aiosqlite import connect
@@ -561,6 +561,44 @@ async def get_hw_for_day(class_id: int, groups_ids: list[int],
         cn: (await get_hw(subject_id=subj['id'], d=day)) if subj else None
         for cn, subj in schedule.items()
     }
+    
+
+async def get_lesson_or_break(
+    dt: datetime,
+    class_id: int,
+    groups_ids: list[int]
+) -> tuple[bool, time, time, dict[str, Any] | None, timedelta] | None: # is_break, start_time, end_time, subject, to_end
+    schedule = await get_schedule_for_day(class_id, groups_ids, dt.date())
+    bells = await get_bells_schedule(class_id)
+    
+    subj = {}
+    
+    def __get_diff(t1: time, t2: time) -> timedelta:
+        dt1 = datetime(dt.year, dt.month, dt.day, t1.hour, t1.minute, t1.second, t1.microsecond)
+        dt2 = datetime(dt.year, dt.month, dt.day, t2.hour, t2.minute, t2.second, t2.microsecond)
+        return dt1 - dt2
+    
+    if bells:
+        current_bell = -1, -1
+        for bell in bells:
+            if bell[0] < dt.time() and bell[1] > dt.time():
+                current_bell = bell[0], bell[1]
+                if bell[2] == 0:
+                    subj['name'] = bell[3]
+                else:
+                    subj = schedule[bell[2]]
+        
+        if current_bell[0] == -1 and current_bell[1] == -1:
+            for i, bell in enumerate(bells):
+                if i < len(bells) - 1:
+                    nextbell = bells[i+1]
+                    if bell[1] < dt.time() and nextbell[0] > dt.time():
+                        return (True, bell[1], nextbell[0], schedule[nextbell[2]] if i < len(bells)-1 else None,
+                                __get_diff(nextbell[0], dt.time()))
+        else:
+            return False, current_bell[0], current_bell[1], subj, __get_diff(current_bell[1], dt.time())
+    else:
+        return None
 
 
 def full_reset():

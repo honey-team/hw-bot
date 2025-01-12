@@ -1,5 +1,5 @@
 import asyncio
-from datetime import timedelta
+from datetime import timedelta, datetime
 from os import getenv
 from typing import Any
 
@@ -20,6 +20,7 @@ from aiogram.exceptions import TelegramBadRequest
 from config import *
 from db import *
 from db import get_hw_for_day, hw_mark_uncompleted
+from db import get_lesson_or_break
 
 TOKEN = getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -40,8 +41,8 @@ def generate_markup(dataclass: TextAndButtonsDataclass) -> Optional[InlineKeyboa
 
 async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optional[str] = None) -> str:
     user_id = message.from_user.id
-    member = x[0] if (x := await get_members(user_id)) else None
-    cl = await get_class(member['class_id']) if member else None
+    member = x[0] if (x := await get_members(user_id)) else {}
+    cl = await get_class(member['class_id']) if member else {}
     
     user_name = message.from_user.full_name if message else 'ошибка'
     cl_name = 'ошибка'
@@ -158,18 +159,17 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 schedule_text += '\n'
 
     tommorrow = date.today() + timedelta(days=1)
-    hw_tommorrow = await get_hw_for_day(member['class_id'], member['groups_ids'], tommorrow)
-    for _hw in hw_tommorrow.values():
-        if _hw is not None:
-            hw_all += 1
-            if member['id'] in _hw.get('completed', []):
-                hw_completed += 1
+    if member:
+        hw_tommorrow = await get_hw_for_day(member['class_id'], member['groups_ids'], tommorrow)
+        for _hw in hw_tommorrow.values():
+            if _hw is not None:
+                hw_all += 1
+                if member['id'] in _hw.get('completed', []):
+                    hw_completed += 1
+    
+    now_information = await get_lesson_or_break(datetime.now(), member['class_id'], member['groups_ids'])
 
-    cl = current_lesson.get(user_id, {
-        'name': None,
-        'office': None,
-        'teacher': None
-    })
+    cl = current_lesson.get(user_id, {})
     general_info = {
         'home.holiday': home.if_holiday if tommorrow.weekday() in [5, 6] else home.if_not_holiday,
         'user_name': user_name,
@@ -185,14 +185,27 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'current_day': current_day,
         'hw_text': hw_text or 'Сегодня уроков нет',
         'current_lesson': les.get('name', 'не найдено'),
-        'hw_is_completed': ' ✅' if member['id'] in hw.get('completed', []) else '',
+        'hw_is_completed': ' ✅' if member.get('id') in hw.get('completed', []) else '',
         'hw': hw.get('text', 'Нет текста'),
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
         'sch_bells': sch_bells or 'Расписания звонков нет',
-        'cles.name': cl['name'] or 'ошибка',
-        'cles.office': cl['office'] or 'не указан',
-        'cles.teacher': cl['teacher'] or 'не указан',
+        'cles.name': cl.get('name') or 'ошибка',
+        'cles.office': cl.get('office') or 'не указан',
+        'cles.teacher': cl.get('teacher') or 'не указан',
+        'now.bell': f'{now_information[1].strftime('%H:%M')}-{now_information[2].strftime('%H:%M')}'
+                    if now_information and now_information[1] and now_information[2] else '',
+        'now.lesson_or_break': (now.is_break if now_information[0] else now.is_lesson.format(
+            now_lesson=now_information[3]['name'], now_office=f' в {x}' if (x := now_information[3]['office']) else ''
+        )) if now_information else '',
+        'minutes_to_end': now_information[4].seconds // 60 if now_information else '',
+        'now.info': (
+            (now.is_break_info + now.is_lesson_info if now_information[3] else now.is_break_info)
+            if now_information[0] else now.is_lesson_info)
+            .replace('{now_office}', (x if (x := y['office']) else 'не записан') if (y := now_information[3]) else '')
+            .replace('{now_teacher}', (x if (x := y['teacher']) else 'не записан') if (y := now_information[3]) else '')
+            .replace('{now_next_lesson}', x['name'] if (x := now_information[3]) else 'нет'
+        ) if now_information else '',
         'ctx.g': ctx_g or 'ошибка',
     }
     
@@ -267,6 +280,11 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     async def __edit(dcls: TextAndButtonsDataclass, **additional):
         try:
             await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
+        except TelegramBadRequest:
+            pass
+    async def __answer(dcls: TextAndButtonsDataclass, **additional):
+        try:
+            await callback_query.message.answer(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
         except TelegramBadRequest:
             pass
 
@@ -392,6 +410,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             if current_date.get(user_id) is None:
                 current_date[user_id] = date.today() + timedelta(days=1)
             await __edit(hw)
+        case 'hw_return':
+            if current_date.get(user_id) is None:
+                current_date[user_id] = date.today() + timedelta(days=1)
+            await __answer(hw)
         case 'hw_left':
             current_date[user_id] -= timedelta(days=1)
             await __edit(hw)
@@ -418,7 +440,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             else:
                 await create_hw(current_lesson[user_id]['id'], hw_oe_text.get(user_id, None),
                                 d=current_date[user_id], files=hw_oe_files[user_id])
-            await __edit(hw_open_edit2)
+            await __answer(hw_open_edit2)
             w_hw_oe.remove(user_id)
         case 'hw_return_open':
             await __edit(hw_open2)
@@ -442,6 +464,15 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'hw_right':
             current_date[user_id] += timedelta(days=1)
             await __edit(hw)
+        case 'now':
+            if await get_bells_schedule(memb['class_id']):
+                now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
+                if now_information:
+                    await __edit(now)
+                else:
+                    await callback_query.message.edit_text(now.text_lessons_ended, reply_markup=generate_markup(now))
+            else:
+                await callback_query.message.edit_text(now.text_fallback_bells, reply_markup=generate_markup(now))
             
 
 @dp.message()
