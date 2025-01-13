@@ -70,8 +70,9 @@ class wc_join_class:
 
 class home:
     if_not_holiday = 'Выполнено {hw_completed} из {hw_all} домашних заданий'
+    if_there_isnt_hw = 'На завтра нет домашних заданий'
     if_holiday = 'Завтра нет занятий'
-    text = html.bold('👋 Привет, {user_name} ({current_class}{current_group})!\n') + '{home.holiday}'
+    text = html.bold('👋 {home.hello}, {user_name} ({current_class}{current_group})!\n') + '{home.hw}'
     buttons = [
         [
             ('⏰ Сейчас', 'now')
@@ -89,12 +90,12 @@ class home:
 class now:
     is_break = 'Перемена'
     is_lesson = '{now_lesson}{now_office}'
-    is_lesson_info = ('Кабинет: ' + html.bold('{now_office}') +
-                      '\nУчитель: ' + html.bold('{now_teacher}'))
-    is_break_info = 'Следующий урок - ' + html.bold('{now_next_lesson}\n')
+    is_lesson_info = ('🚪 Кабинет: ' + html.bold('{now_office}\n') +
+                      '👩‍🏫 Учитель: ' + html.bold('{now_teacher}'))
+    is_break_info = '➡️ Следующий урок - ' + html.bold('{now_next_lesson}\n')
 
-    text = '{now.bell} {now.lesson_or_break} ({minutes_to_end} минут до конца)\n{now.info}\n'
-    text_lessons_ended = '❌ Уроки закончились'
+    text = '{now.time} {now.bell} {now.lesson_or_break} ({minutes_to_end} минут до конца)\n{now.info}\n'
+    text_lessons_ended = '{now.time} ❌ Уроки закончились'
     text_fallback_bells = '⚠️ Настройте расписание звонков в настройках расписания.'
 
     buttons = home_button_markup
@@ -254,11 +255,28 @@ class hw_open1:
         ]
     ]
 class hw_open2:
-    text = 'Домашнее задание на {current_day} по предмету {current_lesson}{hw_is_completed}\n{hw}'
+    text = 'Домашнее задание на {current_day} по предмету {current_lesson}{hw_is_completed}\n\n{hw}'
     buttons = [
         [
             ('✍️ Изменить', 'hw_open_edit'),
             ('✅ Выполнено', 'hw_open_complete'),
+            (back_button_text, 'hw_return')
+        ]
+    ]
+class hw_open_btn_uncomplete:
+    text = 'Домашнее задание на {current_day} по предмету {current_lesson}{hw_is_completed}\n\n{hw}'
+    buttons = [
+        [
+            ('✍️ Изменить', 'hw_open_edit'),
+            ('❌ Не выполнено', 'hw_open_complete'),
+            (back_button_text, 'hw_return')
+        ]
+    ]
+class hw_open_none:
+    text = 'Домашнее задание на {current_day} по предмету {current_lesson}\n\nДомашнее задание отсутствует'
+    buttons = [
+        [
+            ('✍️ Записать', 'hw_open_edit'),
             (back_button_text, 'hw_return')
         ]
     ]
@@ -272,6 +290,14 @@ class hw_open_complete:
         [
             hw_button,
             home_button
+        ]
+    ]
+class hw_open_complete_none:
+    text = (f'{html.bold('❌ Ошибка')}\n\n'
+            'Сначала впишите домашнее задание, а затем отмечайте его как выполненное!')
+    buttons = [
+        [
+            (back_button_text, 'hw_return_open')
         ]
     ]
 

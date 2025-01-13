@@ -1,12 +1,13 @@
 import asyncio
 from datetime import timedelta, datetime
 from os import getenv
+from random import choice
 from typing import Any
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     InlineKeyboardMarkup,
@@ -170,8 +171,19 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
     now_information = await get_lesson_or_break(datetime.now(), member['class_id'], member['groups_ids'])
 
     cl = current_lesson.get(user_id, {})
+
+    hellos = ['Привет', 'Здравствуйте', 'Салют', 'Приветствую']
+    n = datetime.now()
+    _si = n.year, n.month, n.day
+    if n > datetime(*_si, hour=18) or n < datetime(*_si, hour=22): hellos += ['Добрый вечер']
+    elif n < datetime(*_si, hour=7): hellos += ['Доброй ночи', 'Спокойной ночи']
+    elif n < datetime(*_si, hour=12): hellos += ['Доброе утро']
+    else: hellos += ['Добрый день']
+
     general_info = {
-        'home.holiday': home.if_holiday if tommorrow.weekday() in [5, 6] else home.if_not_holiday,
+        'home.hello': choice(hellos),
+        'home.hw': home.if_holiday if tommorrow.weekday() in [5, 6] else home.if_not_holiday
+                                                                    if hw_all > 0 else home.if_there_isnt_hw,
         'user_name': user_name,
         'user_id': message.from_user.id if message else 'ошибка',
         'hw_completed': hw_completed,
@@ -198,7 +210,8 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'now.lesson_or_break': (now.is_break if now_information[0] else now.is_lesson.format(
             now_lesson=now_information[3]['name'], now_office=f' в {x}' if (x := now_information[3]['office']) else ''
         )) if now_information else '',
-        'minutes_to_end': now_information[4].seconds // 60 if now_information else '',
+        'minutes_to_end': (now_information[4].seconds+59) // 60 if now_information else '',
+        'now.time': datetime.now().strftime('%H:%M'),
         'now.info': (
             (now.is_break_info + now.is_lesson_info if now_information[3] else now.is_break_info)
             if now_information[0] else now.is_lesson_info)
@@ -272,6 +285,8 @@ hw_oe_files = {}
 
 w_hw_c_name = []
 
+now_updating = []
+
 # Homework
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
@@ -288,6 +303,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         except TelegramBadRequest:
             pass
 
+    if callback_query.data != 'now' and user_id in now_updating: now_updating.remove(user_id)
     match callback_query.data:
         case 'wc_create_class':
             await __edit(wc_create_class1)
@@ -355,7 +371,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 ]], one_time_keyboard=True))
             w_sch_info_lesson.append(user_id)
         case 'sch_info_edit':
-            sch_set_se_csubj[user_id] = current_lesson[user_id]
+            if current_lesson.get(user_id):
+                sch_set_se_csubj[user_id] = current_lesson[user_id]
             await __edit(sch_subj_edit2)
         case 'schedule_right':
             current_date[user_id] += timedelta(days=1)
@@ -443,15 +460,22 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __answer(hw_open_edit2)
             w_hw_oe.remove(user_id)
         case 'hw_return_open':
-            await __edit(hw_open2)
+            _hw = await get_hw(subject_id=current_lesson[user_id]['id'], d=current_date[user_id])
+            if memb['id'] in _hw.get('completed', []):
+                await __edit(hw_open_btn_uncomplete)
+            else:
+                await __edit(hw_open2)
         case 'hw_open_complete':
             _hw = await get_hw(subject_id= current_lesson[user_id]['id'], d=current_date[user_id])
 
-            if memb['id'] in _hw['completed']:
-                await hw_mark_uncompleted(memb['id'], _hw['id'])
+            if _hw is None:
+                await __edit(hw_open_complete_none)
             else:
-                await hw_mark_completed(memb['id'], _hw['id'])
-            await __edit(hw_open_complete)
+                if memb['id'] in _hw['completed']:
+                    await hw_mark_uncompleted(memb['id'], _hw['id'])
+                else:
+                    await hw_mark_completed(memb['id'], _hw['id'])
+                await __edit(hw_open_complete)
         case 'hw_complete':
             sch = (await get_hw_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])).values()
             schn = set()
@@ -465,18 +489,86 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             current_date[user_id] += timedelta(days=1)
             await __edit(hw)
         case 'now':
-            if await get_bells_schedule(memb['class_id']):
-                now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
-                if now_information:
-                    await __edit(now)
+            last_minute = datetime.now().minute - 1
+            now_updating.append(user_id)
+            while True:
+                if user_id not in now_updating: break
+                if datetime.now().minute > last_minute:
+                    try:
+                        if await get_bells_schedule(memb['class_id']):
+                            now_information = await get_lesson_or_break(
+                                              datetime.now(), memb['class_id'], memb['groups_ids'])
+                            if now_information:
+                                await __edit(now)
+                            else:
+                                await callback_query.message.edit_text(
+                                    await format_text(now.text_lessons_ended, callback_query),
+                                    reply_markup=generate_markup(now))
+                        else:
+                            await callback_query.message.edit_text(await format_text(now.text_fallback_bells,
+                                                                   callback_query), reply_markup=generate_markup(now))
+                    except TelegramBadRequest:
+                        pass
+                    last_minute = datetime.now().minute
+                await asyncio.sleep(1)
+
+
+@dp.message(Command('hw', ignore_case=True))
+async def hw_command(message: Message) -> None:
+    if current_date.get(user_id := message.from_user.id) is None:
+        current_date[user_id] = date.today() + timedelta(days=1)
+    await message.answer(await format_text(hw.text, message), reply_markup=generate_markup(hw))
+
+
+@dp.message(Command('sch', ignore_case=True))
+async def sch_command(message: Message) -> None:
+    if current_date.get(user_id := message.from_user.id) is None:
+        current_date[user_id] = date.today()
+    await message.answer(await format_text(schedule.text, message), reply_markup=generate_markup(schedule))
+
+
+@dp.message(Command('settings', ignore_case=True))
+async def settings_command(message: Message) -> None:
+    await message.answer(await format_text(cl_settings.text, message), reply_markup=generate_markup(cl_settings))
+
+
+@dp.message(Command('now', ignore_case=True))
+async def now_command(message: Message) -> None:
+    memb = x[0] if (x := await get_members(message.from_user.id)) else None
+    now_updating.append(message.from_user.id)
+    if await get_bells_schedule(memb['class_id']):
+        now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
+        if now_information:
+            now_mes = await message.answer(await format_text(now.text, message), reply_markup=generate_markup(now))
+        else:
+            now_mes = await message.answer(await format_text(now.text_lessons_ended, message),
+                                           reply_markup=generate_markup(now))
+    else:
+        now_mes = await message.answer(await format_text(now.text_fallback_bells, message),
+                                       reply_markup=generate_markup(now))
+    last_minute = datetime.now().minute
+    while True:
+        if message.from_user.id not in now_updating: break
+        if datetime.now().minute > last_minute:
+            try:
+                if await get_bells_schedule(memb['class_id']):
+                    now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
+                    if now_information:
+                        await now_mes.edit_text(await format_text(now.text, message), reply_markup=generate_markup(now))
+                    else:
+                        await now_mes.edit_text(await format_text(now.text_lessons_ended, message),
+                                                               reply_markup=generate_markup(now))
                 else:
-                    await callback_query.message.edit_text(now.text_lessons_ended, reply_markup=generate_markup(now))
-            else:
-                await callback_query.message.edit_text(now.text_fallback_bells, reply_markup=generate_markup(now))
-            
+                    await now_mes.edit_text(await format_text(now.text_fallback_bells, message),
+                                                           reply_markup=generate_markup(now))
+            except TelegramBadRequest:
+                pass
+            last_minute = datetime.now().minute
+        await asyncio.sleep(1)
+
 
 @dp.message()
-async def echo_handler(message: Message) -> None:
+async def user_answer_handler(message: Message) -> None:
     user_id = message.from_user.id
     async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
@@ -662,7 +754,13 @@ async def echo_handler(message: Message) -> None:
                     except TelegramBadRequest:
                         await message.answer_photo(f)
 
-            await __answer(hw_open2)
+            if _hw:
+                if memb['id'] in _hw['completed']:
+                    await __answer(hw_open_btn_uncomplete)
+                else:
+                    await __answer(hw_open2)
+            else:
+                await __answer(hw_open_none)
             w_hw_o_name.remove(user_id)
         else:
             await message.answer(await format_text('Попробуйте еще раз\n' + hw_open1.text, message),
@@ -719,7 +817,6 @@ async def main() -> None:
     await init_all()
     print('Bot is online')
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
