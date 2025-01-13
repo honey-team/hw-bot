@@ -69,7 +69,7 @@ class wc_join_class:
 
 
 class home:
-    if_not_holiday = 'Выполнено {hw_completed} из {hw_all} домашних заданий'
+    if_not_holiday = 'ДЗ: {hw_comp_text}'
     if_there_isnt_hw = 'На завтра нет домашних заданий'
     if_holiday = 'Завтра нет занятий'
     text = html.bold('👋 {home.hello}, {user_name} ({current_class}{current_group})!\n') + '{home.hw}'
@@ -94,7 +94,7 @@ class now:
                       '👩‍🏫 Учитель: ' + html.bold('{now_teacher}'))
     is_break_info = '➡️ Следующий урок - ' + html.bold('{now_next_lesson}\n')
 
-    text = '{now.time} {now.bell} {now.lesson_or_break} ({minutes_to_end} минут до конца)\n{now.info}\n'
+    text = '{now.time} {now.bell} {now.lesson_or_break} ({now.minutes_to_end} минут до конца)\n{now.info}\n'
     text_lessons_ended = '{now.time} ❌ Уроки закончились'
     text_fallback_bells = '⚠️ Настройте расписание звонков в настройках расписания.'
 
@@ -129,6 +129,9 @@ class cl_members:
 
 class cl_add_member1:
     text = 'Напишите айди человека, которого вы хотите добавить в класс'
+    buttons = [[
+        ('❌ Отмена', 'cl_add_member_return')
+    ]]
 class cl_add_member2:
     text = 'Напишите имя участника, которого вы добавляете'
 class cl_add_member3:

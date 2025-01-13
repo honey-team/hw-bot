@@ -136,7 +136,8 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 if st and et:
                     schedule_text += html.code(f'{st.strftime('%H:%M')} - {et.strftime('%H:%M')} ')
                 if lesson == 0:
-                    schedule_text += f'{n} 🍽️'
+                    if n:
+                        schedule_text += f'{n} 🍽️'
                 else:
                     schedule_text += f'{lesson}. '
                     hw_text += f'{lesson}. '
@@ -150,7 +151,15 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                         hw_text += '❌'
                     if hw_sch[lesson]:
                         hw_text += ': '
-                        tmp = hw_sch[lesson].get('text', 'Прикреплены файлы')
+                        l = len(hw_sch[lesson].get('files', []))
+                        tmp = hw_sch[lesson].get('text', '')
+                        if tmp is None: tmp = ''
+                        if l > 0:
+                            if tmp:
+                                tmp += f' +{l}📄'
+                            else:
+                                tmp += f'{l}📄'
+
                         hw_text += html.strikethrough(tmp)\
                                    if member['id'] in hw_sch[lesson].get('completed', [])\
                                    else tmp
@@ -160,6 +169,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 schedule_text += '\n'
 
     tommorrow = date.today() + timedelta(days=1)
+    now_information = [None, None, None, {}, None]
     if member:
         hw_tommorrow = await get_hw_for_day(member['class_id'], member['groups_ids'], tommorrow)
         for _hw in hw_tommorrow.values():
@@ -168,8 +178,8 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                 if member['id'] in _hw.get('completed', []):
                     hw_completed += 1
     
-    now_information = await get_lesson_or_break(datetime.now(), member['class_id'], member['groups_ids'])
-
+        now_information = ((await get_lesson_or_break(datetime.now(), member['class_id'], member['groups_ids']))
+                           or now_information)
     cl = current_lesson.get(user_id, {})
 
     hellos = ['Привет', 'Здравствуйте', 'Салют', 'Приветствую']
@@ -186,8 +196,9 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                                                                     if hw_all > 0 else home.if_there_isnt_hw,
         'user_name': user_name,
         'user_id': message.from_user.id if message else 'ошибка',
-        'hw_completed': hw_completed,
-        'hw_all': hw_all,
+        # 'hw_completed': hw_completed,
+        # 'hw_all': hw_all,
+        'hw_comp_text': '✅' * hw_completed + '❌' * (hw_all-hw_completed),
         'current_class': cl_name,
         'current_group': ' ' + gr_name if gr_name else '',
         'cl_members_text': members_text,
@@ -198,7 +209,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'hw_text': hw_text or 'Сегодня уроков нет',
         'current_lesson': les.get('name', 'не найдено'),
         'hw_is_completed': ' ✅' if member.get('id') in hw.get('completed', []) else '',
-        'hw': hw.get('text', 'Нет текста'),
+        'hw': hw.get('text', 'Нет текста') or '',
         'schedule_text': schedule_text or 'Сегодня уроков нет',
         'subjects_text': subjects_text or 'Предметов нет',
         'sch_bells': sch_bells or 'Расписания звонков нет',
@@ -206,11 +217,12 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'cles.office': cl.get('office') or 'не указан',
         'cles.teacher': cl.get('teacher') or 'не указан',
         'now.bell': f'{now_information[1].strftime('%H:%M')}-{now_information[2].strftime('%H:%M')}'
-                    if now_information and now_information[1] and now_information[2] else '',
+                    if any(now_information) and now_information[1] and now_information[2] else '',
         'now.lesson_or_break': (now.is_break if now_information[0] else now.is_lesson.format(
-            now_lesson=now_information[3]['name'], now_office=f' в {x}' if (x := now_information[3]['office']) else ''
-        )) if now_information else '',
-        'minutes_to_end': (now_information[4].seconds+59) // 60 if now_information else '',
+            now_lesson=now_information[3].get('name', ''),
+            now_office=f' в {x}' if (x := now_information[3].get('office')) else ''
+        )) if any(now_information) else '',
+        'now.minutes_to_end': (now_information[4].seconds+59) // 60 if any(now_information) else '',
         'now.time': datetime.now().strftime('%H:%M'),
         'now.info': (
             (now.is_break_info + now.is_lesson_info if now_information[3] else now.is_break_info)
@@ -218,7 +230,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             .replace('{now_office}', (x if (x := y['office']) else 'не записан') if (y := now_information[3]) else '')
             .replace('{now_teacher}', (x if (x := y['teacher']) else 'не записан') if (y := now_information[3]) else '')
             .replace('{now_next_lesson}', x['name'] if (x := now_information[3]) else 'нет'
-        ) if now_information else '',
+        ) if any(now_information) else '',
         'ctx.g': ctx_g or 'ошибка',
     }
     
@@ -322,6 +334,9 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'cl_add_member':
             await __edit(cl_add_member1)
             w_cl_am_member_id.append(user_id)
+        case 'cl_add_member_return':
+            await __edit(cl_members)
+            w_cl_am_member_id.remove(user_id)
         case 'cl_groups':
             await __edit(cl_groups)
         case 'cl_groups_create':
@@ -439,7 +454,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(hw)
         case 'hw_open':
             sch = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])
-            schn = list(set([i['name'] for i in sch.values() if i]))
+            schn = []
+            for i in sch.values():
+                if i and i['name'] not in schn:
+                    schn.append(i['name'])
             await callback_query.message.answer(await format_text(hw_open1.text, callback_query), reply_markup=ReplyKeyboardMarkup(
                 keyboard=[[KeyboardButton(text=i) for i in schn]], one_time_keyboard=True))
             w_hw_o_name.append(user_id)
