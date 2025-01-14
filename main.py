@@ -196,8 +196,6 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                                                                     if hw_all > 0 else home.if_there_isnt_hw,
         'user_name': user_name,
         'user_id': message.from_user.id if message else 'ошибка',
-        # 'hw_completed': hw_completed,
-        # 'hw_all': hw_all,
         'hw_comp_text': '✅' * hw_completed + '❌' * (hw_all-hw_completed),
         'current_class': cl_name,
         'current_group': ' ' + gr_name if gr_name else '',
@@ -315,6 +313,15 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         except TelegramBadRequest:
             pass
 
+    def __check_new_day(d: date):
+        if d.month <= 6:
+            y = d.year - 1
+        else:
+            y = d.year
+        if date(y, 9, 1) <= d < date(y + 1, 6, 1): return d
+        if date(y, 9, 1) > d: return date(y, 9, 1)
+        return date(y + 1, 6, 1) - timedelta(days=1)
+
     if callback_query.data != 'now' and user_id in now_updating: now_updating.remove(user_id)
     match callback_query.data:
         case 'wc_create_class':
@@ -366,13 +373,13 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 current_date[user_id] = date.today()
             await __edit(schedule)
         case 'schedule_left_week':
-            current_date[user_id] -= timedelta(days=7)
+            current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=7))
             await __edit(schedule)
         case 'schedule_left':
-            current_date[user_id] -= timedelta(days=1)
+            current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=1))
             await __edit(schedule)
         case 'schedule_today':
-            current_date[user_id] = date.today()
+            current_date[user_id] = __check_new_day(date.today())
             await __edit(schedule)
         case 'schedule_info':
             await __edit(schedule_info1)
@@ -390,10 +397,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 sch_set_se_csubj[user_id] = current_lesson[user_id]
             await __edit(sch_subj_edit2)
         case 'schedule_right':
-            current_date[user_id] += timedelta(days=1)
+            current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=1))
             await __edit(schedule)
         case 'schedule_right_week':
-            current_date[user_id] += timedelta(days=7)
+            current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=7))
             await __edit(schedule)
         case 'schedule_settings':
             await __edit(schedule_settings)
@@ -447,10 +454,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 current_date[user_id] = date.today() + timedelta(days=1)
             await __answer(hw)
         case 'hw_left':
-            current_date[user_id] -= timedelta(days=1)
+            current_date[user_id] =  __check_new_day(current_date[user_id] - timedelta(days=1))
             await __edit(hw)
         case 'hw_tommorrow':
-            current_date[user_id] = date.today() + timedelta(days=1)
+            current_date[user_id] = __check_new_day(date.today() + timedelta(days=1))
             await __edit(hw)
         case 'hw_open':
             sch = await get_schedule_for_day(memb['class_id'], memb['groups_ids'], current_date[user_id])
@@ -504,7 +511,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                 keyboard=[[KeyboardButton(text=i) for i in list(schn)]], one_time_keyboard=True))
             w_hw_c_name.append(user_id)
         case 'hw_right':
-            current_date[user_id] += timedelta(days=1)
+            current_date[user_id] =  __check_new_day(current_date[user_id] + timedelta(days=1))
             await __edit(hw)
         case 'now':
             last_minute = datetime.now().minute - 1
@@ -554,35 +561,36 @@ async def settings_command(message: Message) -> None:
 async def now_command(message: Message) -> None:
     memb = x[0] if (x := await get_members(message.from_user.id)) else None
     now_updating.append(message.from_user.id)
-    if await get_bells_schedule(memb['class_id']):
-        now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
-        if now_information:
-            now_mes = await message.answer(await format_text(now.text, message), reply_markup=generate_markup(now))
+    if memb:
+        if await get_bells_schedule(memb['class_id']):
+            now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
+            if now_information:
+                now_mes = await message.answer(await format_text(now.text, message), reply_markup=generate_markup(now))
+            else:
+                now_mes = await message.answer(await format_text(now.text_lessons_ended, message),
+                                               reply_markup=generate_markup(now))
         else:
-            now_mes = await message.answer(await format_text(now.text_lessons_ended, message),
+            now_mes = await message.answer(await format_text(now.text_fallback_bells, message),
                                            reply_markup=generate_markup(now))
-    else:
-        now_mes = await message.answer(await format_text(now.text_fallback_bells, message),
-                                       reply_markup=generate_markup(now))
-    last_minute = datetime.now().minute
-    while True:
-        if message.from_user.id not in now_updating: break
-        if datetime.now().minute > last_minute:
-            try:
-                if await get_bells_schedule(memb['class_id']):
-                    now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
-                    if now_information:
-                        await now_mes.edit_text(await format_text(now.text, message), reply_markup=generate_markup(now))
+        last_minute = datetime.now().minute
+        while True:
+            if message.from_user.id not in now_updating: break
+            if datetime.now().minute > last_minute:
+                try:
+                    if await get_bells_schedule(memb['class_id']):
+                        now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
+                        if now_information:
+                            await now_mes.edit_text(await format_text(now.text, message), reply_markup=generate_markup(now))
+                        else:
+                            await now_mes.edit_text(await format_text(now.text_lessons_ended, message),
+                                                                   reply_markup=generate_markup(now))
                     else:
-                        await now_mes.edit_text(await format_text(now.text_lessons_ended, message),
+                        await now_mes.edit_text(await format_text(now.text_fallback_bells, message),
                                                                reply_markup=generate_markup(now))
-                else:
-                    await now_mes.edit_text(await format_text(now.text_fallback_bells, message),
-                                                           reply_markup=generate_markup(now))
-            except TelegramBadRequest:
-                pass
-            last_minute = datetime.now().minute
-        await asyncio.sleep(1)
+                except TelegramBadRequest:
+                    pass
+                last_minute = datetime.now().minute
+            await asyncio.sleep(1)
 
 
 @dp.message()
