@@ -1,0 +1,37 @@
+{
+  "members": [
+    {
+      "id": 12345,
+      "name": "Тест"
+    }
+  ],
+  "groups": [
+    {
+      "name": "МИ",
+      "ids": [12345]
+    }
+  ],
+  "subjects": [
+    {
+      "groups": ["МИ"],
+      "name": "Информатика",
+      "schedule": "01025152",
+      "office": "1",
+      "teacher": "Марья Ивановна"
+    }
+  ],
+  "bells": [
+    {
+      "lesson": 1,
+      "name": null,
+      "start_time": "8:00",
+      "end_time": "8:45"
+    },
+    {
+      "lesson": 0,
+      "name": "Обед",
+      "start_time": "13:00",
+      "end_time": "13:30"
+    }
+  ]
+}
