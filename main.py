@@ -2,7 +2,6 @@ import asyncio
 import logging
 import sys
 from datetime import timedelta, datetime
-from io import BytesIO
 from os import getenv
 from random import choice
 from typing import Any
@@ -18,7 +17,8 @@ from aiogram.types import (
     CallbackQuery,
     ReplyKeyboardMarkup,
     KeyboardButton,
-    BufferedInputFile, InputMediaDocument
+    BufferedInputFile,
+    InputMediaDocument
 )
 from aiogram.exceptions import TelegramBadRequest
 from ujson import dumps, loads
@@ -28,7 +28,7 @@ from db import *
 from db import get_hw_for_day, hw_mark_uncompleted
 from db import get_lesson_or_break
 
-TOKEN = getenv("BOT_TOKEN")
+TOKEN = getenv("HW_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
