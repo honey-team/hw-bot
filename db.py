@@ -28,7 +28,7 @@ __all__ = (
     'edit_hw',
     'delete_group',
     'delete_bells_schedule',
-    'delete_subject',
+    'delete_subjects',
     'assign_to_group',
     'unassign_to_group',
     'hw_mark_completed',
@@ -36,6 +36,8 @@ __all__ = (
     'get_bells_schedule',
     'get_schedule_for_day',
     'get_hw_for_day',
+    'get_conf',
+    'set_conf',
     'full_reset'
 )
 
@@ -246,7 +248,7 @@ async def create_group(class_id: int, name: str = ''):
 
 
 async def create_bell(class_id: int, type: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], name: Optional[str] = None,
-                      start_time: tuple[int, int] = None, end_time: tuple[int, int] = None):
+                      start_time: tuple[int, int] | list[int] = None, end_time: tuple[int, int] | list[int] = None):
     return await insert_into(
         'bells',
         class_id=class_id,
@@ -443,7 +445,7 @@ async def delete_bells_schedule(class_id: int):
     return await delete_from('bells', where(class_id=class_id))
 
 
-async def delete_subject(
+async def delete_subjects(
         subject_id: Optional[int] = None,
         class_id: Optional[int] = None,
         groups_ids: Optional[list[int]] = None,
@@ -599,6 +601,91 @@ async def get_lesson_or_break(
             return False, current_bell[0], current_bell[1], subj, __get_diff(current_bell[1], dt.time())
     else:
         return None
+
+
+async def get_conf(class_id: int) -> dict[str, Any]:
+    result = {
+        'members': [],
+        'groups': [],
+        'subjects': [],
+        'bells': []
+    }
+    class_ = await get_class(class_id)
+
+    async def __get_group_names(__groups_ids: list[int]) -> list[str]:
+        groups_names = []
+        for group_id in __groups_ids:
+            groups_names.append((await get_group(group_id))['name'])
+        return groups_names
+
+    #
+    for member in await get_members(class_id=class_id):
+        result['members'].append({
+            'id': member['id'],
+            'name': member['name'],
+            'groups': await __get_group_names(member['groups_ids'])
+        })
+
+    for group_name in await __get_group_names(class_['groups_ids']):
+        result['groups'].append({'name': group_name})
+
+    for subject in await get_subjects(class_id=class_id):
+        result['subjects'].append({
+            'groups': await __get_group_names(subject['groups_ids']),
+            'name': subject['name'],
+            'schedule': subject['schedule'],
+            'office': subject['office'],
+            'teacher': subject['teacher']
+        })
+
+    for bell_start_time, bell_end_time, bell_type, bell_name in await get_bells_schedule(class_id):
+        result['bells'].append({
+            'lesson': bell_type,
+            'name': bell_name,
+            'start_time': bell_start_time.strftime('%H:%M'),
+            'end_time': bell_start_time.strftime('%H:%M')
+        })
+
+    return result
+
+async def set_conf(class_id: int, data: dict[str, Any]) -> None:
+    async def __get_group_ids(__groups_names: list[str]) -> list[int]:
+        groups_ids = []
+        for group_name in __groups_names:
+            groups_ids.append((await get_group(name=group_name))['id'])
+        return groups_ids
+
+    # Create groups (if not exists)
+    for group in data['groups']:
+        if not await get_group(name=group['name']):
+            await create_group(class_id, group['name'])
+
+    # Add members (if not exists)
+    for member in data['members']:
+        if not await get_members(member['id']):
+            await create_member(member['id'], class_id, member['name'], await __get_group_ids(member['groups']))
+
+    # Reset subjects
+    await delete_subjects(class_id=class_id)
+    # Create subjects
+    for subject in data['subjects']:
+        if not await get_subjects(name=subject['name']):
+            await create_subject(
+                class_id,
+                await __get_group_ids(subject['groups']),
+                subject['name'],
+                subject['schedule'],
+                subject['office'],
+                subject['teacher']
+            )
+
+    # Reset bells
+    await delete_bells_schedule(class_id)
+    # Create bells
+    for bell in data['bells']:
+        await create_bell(class_id, bell['lesson'], bell['name'],
+                          [int(i) for i in bell['start_time'].split(':')],
+                          [int(i) for i in bell['end_time'].split(':')])
 
 
 def full_reset():

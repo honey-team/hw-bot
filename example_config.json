@@ -2,13 +2,13 @@
   "members": [
     {
       "id": 12345,
-      "name": "Тест"
+      "name": "Тест",
+      "groups": ["МИ"]
     }
   ],
   "groups": [
     {
-      "name": "МИ",
-      "ids": [12345]
+      "name": "МИ"
     }
   ],
   "subjects": [

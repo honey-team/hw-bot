@@ -1,5 +1,8 @@
 import asyncio
+import logging
+import sys
 from datetime import timedelta, datetime
+from io import BytesIO
 from os import getenv
 from random import choice
 from typing import Any
@@ -14,9 +17,11 @@ from aiogram.types import (
     InlineKeyboardButton,
     CallbackQuery,
     ReplyKeyboardMarkup,
-    KeyboardButton
+    KeyboardButton,
+    BufferedInputFile, InputMediaDocument
 )
 from aiogram.exceptions import TelegramBadRequest
+from ujson import dumps, loads
 
 from config import *
 from db import *
@@ -114,7 +119,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         
         if d in h or d.weekday() in [5, 6]:
             schedule_text = hw_text = 'Сегодня уроков нет (выходной)'
-        else:
+        elif member:
             sch = await get_schedule_for_day(member['class_id'], member['groups_ids'], d)
             hw_sch = await get_hw_for_day(member['class_id'], member['groups_ids'], d)
             hw = (await get_hw(subject_id=les.get('id', 0), d=d)) or {}
@@ -163,8 +168,6 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                         hw_text += html.strikethrough(tmp)\
                                    if member['id'] in hw_sch[lesson].get('completed', [])\
                                    else tmp
-                    elif subj:
-                        hw_text += ': Нет домашнего задания'
                     hw_text += '\n'
                 schedule_text += '\n'
 
@@ -295,6 +298,8 @@ hw_oe_files = {}
 
 w_hw_c_name = []
 
+w_set_conf_file = []
+
 now_updating = []
 
 # Homework
@@ -304,12 +309,16 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     memb = x[0] if (x := await get_members(user_id)) else None
     async def __edit(dcls: TextAndButtonsDataclass, **additional):
         try:
-            await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
+            await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional),
+                                                   reply_markup=generate_markup(dcls))
         except TelegramBadRequest:
-            pass
+            await __answer(dcls)
+            await callback_query.message.delete()
+
     async def __answer(dcls: TextAndButtonsDataclass, **additional):
         try:
-            await callback_query.message.answer(await format_text(dcls.text, callback_query, **additional), reply_markup=generate_markup(dcls))
+            await callback_query.message.answer(await format_text(dcls.text, callback_query, **additional),
+                                                reply_markup=generate_markup(dcls))
         except TelegramBadRequest:
             pass
 
@@ -536,6 +545,21 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                         pass
                     last_minute = datetime.now().minute
                 await asyncio.sleep(1)
+        case 'import_export':
+            await __edit(import_export)
+        case 'import':
+            await __edit(import1)
+            w_set_conf_file.append(user_id)
+        case 'import_cancel':
+            w_set_conf_file.remove(user_id)
+            await __edit(import_export)
+        case 'export':
+            data = await get_conf(memb['class_id'])
+            exported = BufferedInputFile(bytes(dumps(data, ensure_ascii=False, indent=2), 'utf-8'),
+                                          filename=f"{datetime.now().strftime('%d.%m.%Y %H %M')}.json")
+            await callback_query.message.edit_media(
+                InputMediaDocument(media=exported, caption=await format_text(export.text, callback_query)),
+                reply_markup=generate_markup(export))
 
 
 @dp.message(Command('hw', ignore_case=True))
@@ -559,8 +583,9 @@ async def settings_command(message: Message) -> None:
 
 @dp.message(Command('now', ignore_case=True))
 async def now_command(message: Message) -> None:
-    memb = x[0] if (x := await get_members(message.from_user.id)) else None
-    now_updating.append(message.from_user.id)
+    user_id = message.from_user.id
+    memb = x[0] if (x := await get_members(user_id)) else None
+
     if memb:
         if await get_bells_schedule(memb['class_id']):
             now_information = await get_lesson_or_break(datetime.now(), memb['class_id'], memb['groups_ids'])
@@ -572,7 +597,10 @@ async def now_command(message: Message) -> None:
         else:
             now_mes = await message.answer(await format_text(now.text_fallback_bells, message),
                                            reply_markup=generate_markup(now))
+        if user_id in now_updating:
+            return
         last_minute = datetime.now().minute
+        now_updating.append(user_id)
         while True:
             if message.from_user.id not in now_updating: break
             if datetime.now().minute > last_minute:
@@ -839,10 +867,24 @@ async def user_answer_handler(message: Message) -> None:
                                                 one_time_keyboard=True))
     #
 
+    # Import
+    elif user_id in w_set_conf_file:
+        if message.document:
+            bindata = await bot.download(message.document)
+            if bindata and isinstance(x := loads(bindata.read()), dict):
+                await set_conf(memb['class_id'], x)
+                await __answer(import2)
+            else:
+                await __answer(import_not_finded_file)
+        else:
+            await __answer(import_not_finded_file)
+    #
+
 async def main() -> None:
     await init_all()
     print('Bot is online')
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     asyncio.run(main())
