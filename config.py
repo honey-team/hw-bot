@@ -73,10 +73,7 @@ class home:
     if_there_isnt_hw = 'На завтра нет домашних заданий'
     if_holiday = 'Завтра нет занятий'
     text = html.bold('👋 {home.hello}, {user_name} ({current_class}{current_group})!\n') + '{home.hw}'
-    buttons = [
-        [
-            ('⏰ Сейчас', 'now')
-        ],
+    no_classes_buttons = [
         [
             hw_button,
             schedule_button
@@ -85,6 +82,11 @@ class home:
             settings_button,
         ]
     ]
+    buttons = [
+        [
+            ('⏰ Сейчас', 'now')
+        ]
+    ] + no_classes_buttons
 
 
 class now:

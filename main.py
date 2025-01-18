@@ -33,14 +33,20 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 
-def generate_markup(dataclass: TextAndButtonsDataclass) -> Optional[InlineKeyboardMarkup]:
+def generate_markup(dataclass: TextAndButtonsDataclass = None,
+                    buttons: list[list[tuple[str, str]]] = None) -> Optional[InlineKeyboardMarkup]:
+    try:
+        if dataclass:
+            buttons = dataclass.buttons
+    except AttributeError:
+        pass
     try:
         return InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text=txt, callback_data=cdata)
                 for txt, cdata in i
             ]
-            for i in dataclass.buttons
+            for i in buttons
         ])
     except AttributeError:
         return None
@@ -188,7 +194,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
     hellos = ['Привет', 'Здравствуйте', 'Салют', 'Приветствую']
     n = datetime.now()
     _si = n.year, n.month, n.day
-    if n > datetime(*_si, hour=18) or n < datetime(*_si, hour=22): hellos += ['Добрый вечер']
+    if datetime(*_si, hour=18) < n < datetime(*_si, hour=22): hellos += ['Добрый вечер']
     elif n < datetime(*_si, hour=7): hellos += ['Доброй ночи', 'Спокойной ночи']
     elif n < datetime(*_si, hour=12): hellos += ['Доброе утро']
     else: hellos += ['Добрый день']
@@ -220,9 +226,9 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'now.bell': f'{now_information[1].strftime('%H:%M')}-{now_information[2].strftime('%H:%M')}'
                     if any(now_information) and now_information[1] and now_information[2] else '',
         'now.lesson_or_break': (now.is_break if now_information[0] else now.is_lesson.format(
-            now_lesson=now_information[3].get('name', ''),
-            now_office=f' в {x}' if (x := now_information[3].get('office')) else ''
-        )) if any(now_information) else '',
+            now_lesson=now_information[3].get('name', '') if now_information[3] else '',
+            now_office=f' в {x}' if now_information[3] and (x := now_information[3].get('office')) else ''
+        )) if now_information and any(now_information) else '',
         'now.minutes_to_end': (now_information[4].seconds+59) // 60 if any(now_information) else '',
         'now.time': datetime.now().strftime('%H:%M'),
         'now.info': (
@@ -243,7 +249,16 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     if await get_members(message.from_user.id):
-        await message.answer(await format_text(home.text, message), reply_markup=generate_markup(home))
+        h = []
+        for i in holidays:
+            for j in range(7):
+                h.append(i + timedelta(days=j))
+        d = date.today()
+        if d in h or d.weekday() in [5, 6]:
+            await message.answer(await format_text(home.text, message),
+                                 reply_markup=generate_markup(buttons=home.no_classes_buttons))
+        else:
+            await message.answer(await format_text(home.text, message), reply_markup=generate_markup(home))
     else:
         await message.answer(await format_text(welcome.text, message), reply_markup=generate_markup(welcome))
 
@@ -307,18 +322,28 @@ now_updating = []
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     user_id = callback_query.from_user.id
     memb = x[0] if (x := await get_members(user_id)) else None
-    async def __edit(dcls: TextAndButtonsDataclass, **additional):
+    async def __edit(dcls: TextAndButtonsDataclass, text: Optional[str] = None,
+                     buttons: Optional[list[list[tuple[int, int]]]] = None, **additional):
+        if text is None:
+            text = dcls.text
+        if buttons is None:
+            buttons = dcls.buttons
         try:
-            await callback_query.message.edit_text(await format_text(dcls.text, callback_query, **additional),
-                                                   reply_markup=generate_markup(dcls))
+            await callback_query.message.edit_text(await format_text(text, callback_query, **additional),
+                                                   reply_markup=generate_markup(buttons=buttons))
         except TelegramBadRequest:
-            await __answer(dcls)
+            await __answer(dcls, text=text, buttons=buttons)
             await callback_query.message.delete()
 
-    async def __answer(dcls: TextAndButtonsDataclass, **additional):
+    async def __answer(dcls: TextAndButtonsDataclass, text = None,
+                       buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
+        if text is None:
+            text = dcls.text
+        if buttons is None:
+            buttons = dcls.buttons
         try:
-            await callback_query.message.answer(await format_text(dcls.text, callback_query, **additional),
-                                                reply_markup=generate_markup(dcls))
+            await callback_query.message.answer(await format_text(text, callback_query, **additional),
+                                                reply_markup=generate_markup(buttons=buttons))
         except TelegramBadRequest:
             pass
 
@@ -340,7 +365,15 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(wc_join_class)
         case 'home':
             if await get_members(user_id):
-                await __edit(home)
+                h = []
+                for i in holidays:
+                    for j in range(7):
+                        h.append(i + timedelta(days=j))
+                d = date.today()
+                if d in h or d.weekday() in [5, 6]:
+                    await __edit(home, buttons=home.no_classes_buttons)
+                else:
+                    await __edit(home)
             else:
                 await __edit(welcome)
         case 'cl_settings':
@@ -626,20 +659,33 @@ async def user_answer_handler(message: Message) -> None:
     user_id = message.from_user.id
     async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
-    
+
+    async def check_name_for_lines_and_length() -> str | None:
+        if len(message.text) > 10:
+            await message.answer("Имя слишком длинное. Попробуйте выбрать имя меньше 10 символов.")
+            return
+        return message.text.replace('\n', '')
+
     memb = x[0] if (x := await get_members(user_id)) else None
 
     # Create class
     if user_id in w_wc_cc_class_name:
-        wc_cc_class_name[user_id] = message.text
-        await __answer(wc_create_class2)
+        if len(message.text) > 10:
+            await message.answer("Ваше название класса слишком длинное."
+                                 "Попробуйте выбрать название класса меньше 10 символов")
+            return
         w_wc_cc_class_name.remove(user_id)
+        _class_name = message.text.replace('\n', '')
+        wc_cc_class_name[user_id] = _class_name
+        await __answer(wc_create_class2)
         w_wc_cc_creator_name.append(user_id)
     elif user_id in w_wc_cc_creator_name:
-        cl = await create_class(wc_cc_class_name[user_id])
-        await create_member(user_id, cl['id'], message.text)
-        await __answer(wc_create_class3)
+        if (_name := await check_name_for_lines_and_length()) is None:
+            return
         w_wc_cc_creator_name.remove(user_id)
+        cl = await create_class(wc_cc_class_name[user_id])
+        await create_member(user_id, cl['id'], _name)
+        await __answer(wc_create_class3)
     #
 
     # Add member
@@ -649,22 +695,26 @@ async def user_answer_handler(message: Message) -> None:
         except ValueError:
             await message.answer('Пожалуйста, пишите айди участника без лишних символов, кроме цифр.\n' + cl_add_member1.text)
             return
+        w_cl_am_member_id.remove(user_id)
         cl_am_member_id[user_id] = _id
         await __answer(cl_add_member2)
-        w_cl_am_member_id.remove(user_id)
         w_cl_am_name.append(user_id)
     elif user_id in w_cl_am_name:
-        await create_member(cl_am_member_id[user_id], memb['class_id'], message.text)
+        if (_name := await check_name_for_lines_and_length()) is None:
+            return
+        w_cl_am_name.remove(user_id)
+        await create_member(cl_am_member_id[user_id], memb['class_id'], _name)
         await __answer(cl_add_member3)
         del cl_am_member_id[user_id]
-        w_cl_am_name.remove(user_id)
     #
-    
+
     # Group create
     elif user_id in w_cl_gc_name:
-        cl_gc_name[user_id] = message.text
-        await __answer(cl_groups_create2)
+        if (_name := await check_name_for_lines_and_length()) is None:
+            return
         w_cl_gc_name.remove(user_id)
+        cl_gc_name[user_id] = _name
+        await __answer(cl_groups_create2)
         w_cl_gc_members.append(user_id)
     elif user_id in w_cl_gc_members:
         members = message.text.splitlines()
@@ -682,21 +732,26 @@ async def user_answer_handler(message: Message) -> None:
     
     # Group edit
     elif user_id in w_cl_ge_name:
-        cl_ge_id[user_id] = (await get_group(name=message.text))['id']
-        await __answer(cl_groups_edit2, ctx_g=message.text)
-        w_cl_ge_name.remove(user_id)
+        if gr := await get_group(name=message.text):
+            cl_ge_id[user_id] = gr['id']
+            await __answer(cl_groups_edit2, ctx_g=message.text)
+            w_cl_ge_name.remove(user_id)
+        else:
+            await message.answer('Не удалось найти группу с данным названием. Попробуйте еще раз.')
     
     elif user_id in w_cl_ge_n_name:
-        await edit_group(cl_ge_id[user_id], message.text)
-        await __answer(cl_groups_edit_name2, ctx_g=message.text)
+        if (_name := await check_name_for_lines_and_length()) is None:
+            return
         w_cl_ge_n_name.remove(user_id)
-    
+        await edit_group(cl_ge_id[user_id], _name)
+        await __answer(cl_groups_edit_name2, ctx_g=_name)
+
     elif user_id in w_cl_ge_m_members:
         members = message.text.splitlines()
-        members_ids = [(await get_members(class_id=memb['class_id'], name=i))[0]['id'] for i in members]
+        members_ids = [x[0]['id'] for i in members if (x := await get_members(class_id=memb['class_id'], name=i))]
 
         for i in (await get_members(class_id=memb['class_id'])):
-            if i['id'] not in members_ids:
+            if i and i['id'] not in members_ids:
                 await unassign_to_group(i['id'], cl_ge_id[user_id])
         for i in members_ids:
             await assign_to_group(i, cl_ge_id[user_id])
@@ -719,9 +774,14 @@ async def user_answer_handler(message: Message) -> None:
     
     # Schedule settings subjects create
     elif user_id in w_sch_set_sc_name:
-        sch_set_sc_name[user_id] = message.text
-        await __answer(sch_subj_create2)
+        if (_name := await check_name_for_lines_and_length()) is None:
+            return
+        if (await get_subjects(name=_name, class_id=memb['class_id'])) or _name in sch_set_sc_name.values():
+            await message.answer('Предмет с таким названием уже есть, выберите уникальное название.')
+            return
         w_sch_set_sc_name.remove(user_id)
+        sch_set_sc_name[user_id] = _name
+        await __answer(sch_subj_create2)
         w_sch_set_sc_groups.append(user_id)
     elif user_id in w_sch_set_sc_groups:
         sch_set_sc_groups_ids[user_id] = [x['id'] for i in message.text.splitlines() if (x := await get_group(name=i))]
@@ -729,9 +789,18 @@ async def user_answer_handler(message: Message) -> None:
         w_sch_set_sc_groups.remove(user_id)
         w_sch_set_sc_schedule.append(user_id)
     elif user_id in w_sch_set_sc_schedule:
+        # Check schedule:
+        _schedule = message.text.replace(' ', '').replace('\n', '')
+        if not (len(_schedule) % 2 == 0
+                and len(_schedule) <= 9*5*4
+                and _schedule.isdigit()
+                and all([int(i) > 0 for i in _schedule[1::2]])
+        ):
+            await message.answer('Неправильный формат расписания. Попробуйте еще раз')
+            return
+        w_sch_set_sc_schedule.remove(user_id)
         await create_subject(memb['class_id'], sch_set_sc_groups_ids[user_id], sch_set_sc_name[user_id], message.text)
         await __answer(sch_subj_create4)
-        w_sch_set_sc_schedule.remove(user_id)
         del sch_set_sc_groups_ids[user_id]
         del sch_set_sc_name[user_id]
     #
