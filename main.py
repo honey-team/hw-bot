@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os.path
 import sys
 from datetime import timedelta, datetime
 from os import getenv
@@ -27,6 +28,7 @@ from config import *
 from db import *
 from db import get_hw_for_day, hw_mark_uncompleted
 from db import get_lesson_or_break
+from logger import logger
 
 TOKEN = getenv("HW_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -248,6 +250,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
 # Main page
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
+    logger.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
     if await get_members(message.from_user.id):
         h = []
         for i in holidays:
@@ -321,6 +324,7 @@ now_updating = []
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     user_id = callback_query.from_user.id
+    logger.log(logging.INFO, f'user {user_id} clicked {callback_query.data!r}')
     memb = x[0] if (x := await get_members(user_id)) else None
     async def __edit(dcls: TextAndButtonsDataclass, text: Optional[str] = None,
                      buttons: Optional[list[list[tuple[int, int]]]] = None, **additional):
@@ -597,6 +601,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
 
 @dp.message(Command('hw', ignore_case=True))
 async def hw_command(message: Message) -> None:
+    logger.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
     if current_date.get(user_id := message.from_user.id) is None:
         current_date[user_id] = date.today() + timedelta(days=1)
     await message.answer(await format_text(hw.text, message), reply_markup=generate_markup(hw))
@@ -604,6 +609,7 @@ async def hw_command(message: Message) -> None:
 
 @dp.message(Command('sch', ignore_case=True))
 async def sch_command(message: Message) -> None:
+    logger.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
     if current_date.get(user_id := message.from_user.id) is None:
         current_date[user_id] = date.today()
     await message.answer(await format_text(schedule.text, message), reply_markup=generate_markup(schedule))
@@ -611,12 +617,14 @@ async def sch_command(message: Message) -> None:
 
 @dp.message(Command('settings', ignore_case=True))
 async def settings_command(message: Message) -> None:
+    logger.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
     await message.answer(await format_text(cl_settings.text, message), reply_markup=generate_markup(cl_settings))
 
 
 @dp.message(Command('now', ignore_case=True))
 async def now_command(message: Message) -> None:
     user_id = message.from_user.id
+    logger.log(logging.INFO, f'user {user_id} sended {message.text!r}')
     memb = x[0] if (x := await get_members(user_id)) else None
 
     if memb:
@@ -656,7 +664,9 @@ async def now_command(message: Message) -> None:
 
 @dp.message()
 async def user_answer_handler(message: Message) -> None:
+    # Logging
     user_id = message.from_user.id
+    logger.log(logging.INFO, f'user {user_id} sended {message.text!r}')
     async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
 
@@ -951,9 +961,12 @@ async def user_answer_handler(message: Message) -> None:
 
 async def main() -> None:
     await init_all()
-    print('Bot is online')
+    logger.log(logging.INFO, 'Bot is online')
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    if not os.path.exists('./logs'):
+        os.mkdir('./logs')
+    logging.basicConfig(filename=f'logs/{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.txt', filemode='w',
+                        level=logging.INFO)
     asyncio.run(main())

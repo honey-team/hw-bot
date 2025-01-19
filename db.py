@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timedelta, time
 from typing import Any, Literal, Optional, overload
 
@@ -41,6 +42,8 @@ __all__ = (
     'full_reset'
 )
 
+from logger import logger
+
 # Basic functions
 path = 'data.db'
 
@@ -65,7 +68,9 @@ async def create_table_ine(name: str, *columns: str):
 async def insert_into(table_name: str, **values: Any):
     async with connect(path) as conn:
         values = format_values(values)
-        print(sql := f'INSERT INTO {table_name} ({','.join(values.keys())}) VALUES ({','.join(values.values())})')
+
+        logger.log(logging.INFO,
+                   sql := f'INSERT INTO {table_name} ({','.join(values.keys())}) VALUES ({','.join(values.values())})')
         await conn.execute(sql)
         await conn.commit()
     return values
@@ -87,7 +92,7 @@ async def update(table_name: str, values: str, *additional: str): ...
 
 async def update(table_name: str, *additional: str):
     async with connect(path) as conn:
-        print(sql := f'UPDATE {table_name} SET {' '.join(additional)}')
+        logger.log(logging.INFO, sql := f'UPDATE {table_name} SET {' '.join(additional)}')
         await conn.execute(sql)
         await conn.commit()
 
@@ -95,7 +100,7 @@ async def update(table_name: str, *additional: str):
 async def get_all_by(table_name: str, *additional: str) -> list[dict[str, Any]] | None:
     async with connect(path) as conn:
         conn.row_factory = __dict_factory
-        print(sql := f'SELECT * FROM {table_name} {' '.join(additional)}')
+        logger.log(logging.INFO, sql := f'SELECT * FROM {table_name} {' '.join(additional)}')
         async with conn.execute(sql) as cur:
             r = await cur.fetchall()
     return r
@@ -109,7 +114,7 @@ async def get_one_by(table_name: str, *additional: str) -> dict[str, Any] | None
 async def delete_from(table_name: str, *additional: str) -> list[dict[str, Any]] | None:
     async with connect(path) as conn:
         to_delete = await get_all_by(table_name, *additional)
-        print(sql := f'DELETE FROM {table_name} {' '.join(additional)}')
+        logger.log(logging.INFO, sql := f'DELETE FROM {table_name} {' '.join(additional)}')
         await conn.execute(sql)
         await conn.commit()
     return to_delete
@@ -118,7 +123,7 @@ async def delete_from(table_name: str, *additional: str) -> list[dict[str, Any]]
 async def get_next_id(table_name: str, *additional: str):
     async with connect(path) as conn:
         conn.row_factory = __dict_factory
-        print(sql := f'SELECT MAX(id) FROM {table_name} {' '.join(additional)}')
+        logger.log(logging.INFO, sql := f'SELECT MAX(id) FROM {table_name} {' '.join(additional)}')
         async with conn.execute(sql) as cur:
             r = await cur.fetchone()
     return int(x) + 1 if r and (x := r.get('MAX(id)')) else 1
