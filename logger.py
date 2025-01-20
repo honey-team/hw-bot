@@ -6,6 +6,8 @@ __all__ = ('Logger', 'logger')
 
 class Logger(io.FileIO):
     def __init__(self):
+        if not os.path.exists('./logs'):
+            os.mkdir('./logs')
         self.path = f'logs/{datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.txt'
         if not os.path.exists(self.path):
             open(self.path, 'x').close() # create empty file

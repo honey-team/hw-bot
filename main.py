@@ -328,10 +328,14 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     memb = x[0] if (x := await get_members(user_id)) else None
     async def __edit(dcls: TextAndButtonsDataclass, text: Optional[str] = None,
                      buttons: Optional[list[list[tuple[int, int]]]] = None, **additional):
-        if text is None:
-            text = dcls.text
-        if buttons is None:
-            buttons = dcls.buttons
+        try:
+            if text is None:
+                text = dcls.text
+        except AttributeError: pass
+        try:
+            if buttons is None:
+                buttons = dcls.buttons
+        except AttributeError: pass
         try:
             await callback_query.message.edit_text(await format_text(text, callback_query, **additional),
                                                    reply_markup=generate_markup(buttons=buttons))
@@ -341,10 +345,14 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
 
     async def __answer(dcls: TextAndButtonsDataclass, text = None,
                        buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
-        if text is None:
-            text = dcls.text
-        if buttons is None:
-            buttons = dcls.buttons
+        try:
+            if text is None:
+                text = dcls.text
+        except AttributeError: pass
+        try:
+            if buttons is None:
+                buttons = dcls.buttons
+        except AttributeError: pass
         try:
             await callback_query.message.answer(await format_text(text, callback_query, **additional),
                                                 reply_markup=generate_markup(buttons=buttons))
@@ -965,7 +973,5 @@ async def main() -> None:
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    if not os.path.exists('./logs'):
-        os.mkdir('./logs')
     logging.basicConfig(level=logging.INFO, stream=logger)
     asyncio.run(main())
