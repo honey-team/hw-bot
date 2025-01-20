@@ -50,7 +50,7 @@ def generate_markup(dataclass: TextAndButtonsDataclass = None,
             ]
             for i in buttons
         ])
-    except AttributeError | TypeError:
+    except (AttributeError,  TypeError):
         return None
 
 async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optional[str] = None) -> str:
