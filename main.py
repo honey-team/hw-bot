@@ -236,10 +236,12 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'now.info': (
             (now.is_break_info + now.is_lesson_info if now_information[3] else now.is_break_info)
             if now_information[0] else now.is_lesson_info)
-            .replace('{now_office}', (x if (x := y['office']) else 'не записан') if (y := now_information[3]) else '')
-            .replace('{now_teacher}', (x if (x := y['teacher']) else 'не записан') if (y := now_information[3]) else '')
+            .replace('{now_office}',
+                     (x if (x := y.get('office')) else 'не записан') if (y := now_information[3]) else '')
+            .replace('{now_teacher}',
+                     (x if (x := y.get('teacher')) else 'не записан') if (y := now_information[3]) else '')
             .replace('{now_next_lesson}', x['name'] if (x := now_information[3]) else 'нет'
-        ) if any(now_information) else '',
+        ) if now_information and any(now_information) else '',
         'ctx.g': ctx_g or 'ошибка',
     }
     
