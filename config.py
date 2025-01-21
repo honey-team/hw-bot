@@ -1,16 +1,24 @@
 # Typing protocols
 from typing import Optional, Protocol
 from datetime import date
+from aiogram import html
 
 start_of_year = date(2024, 9, 2)
-holidays = [date(2024, 10, 28), date(2024, 12, 30)]
+holidays = [
+    date(2024, 10, 28),
+    date(2024, 12, 30),
+    date(2025, 1, 6),
+    date(2025, 4, 7),
+    date(2025, 5, 26)
+]
+VERSION = '1.2.2-alpha'
+DEVELOPER = '@bleuuu1'
+TGC = 'https://t.me/HoneyTeamC'
 
 class TextAndButtonsDataclass(Protocol):
     text: str
     buttons: Optional[list[list[tuple[str, str]]]]
 
-
-from aiogram import html
 
 back_button_text = '↩️ Назад'
 settings_back_button = (back_button_text, 'cl_settings')
@@ -39,6 +47,14 @@ sch_subj_edit_markup = [
         home_button
     ]
 ]
+
+class info:
+    text = (f'{html.bold('Информация о HomeWork')}\n'
+            f'💻 Версия: {html.bold(VERSION)}\n'
+            f'👨‍💻 Разработчик: {html.bold(DEVELOPER)}\n'
+            f'🌐 Телеграмм канал: {html.bold(TGC)}')
+    buttons = [[home_button]]
+
 
 class welcome:
     text = html.bold('Добро пожаловать в HomeWork, бот для отслеживания выполнения домашних заданий, поддерживающий функцию создания классов или групп')
@@ -80,6 +96,7 @@ class home:
         ],
         [
             settings_button,
+            ('📕 Инфо', 'info')
         ]
     ]
     buttons = [

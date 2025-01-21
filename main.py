@@ -373,6 +373,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
 
     if callback_query.data != 'now' and user_id in now_updating: now_updating.remove(user_id)
     match callback_query.data:
+        case 'info':
+            await __edit(info)
         case 'wc_create_class':
             await __edit(wc_create_class1)
             w_wc_cc_class_name.append(user_id)
@@ -587,13 +589,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                                     await __edit(now)
                             else:
                                 await __edit(now, now.text_lessons_ended)
-                                # await callback_query.message.edit_text(
-                                #     await format_text(now.text_lessons_ended, callback_query),
-                                #     reply_markup=generate_markup(now))
                         else:
                             await __edit(now, now.text_fallback_bells)
-                            # await callback_query.message.edit_text(await format_text(now.text_fallback_bells,
-                            #                                        callback_query), reply_markup=generate_markup(now))
                     except TelegramBadRequest:
                         pass
                     last_minute = datetime.now().minute
