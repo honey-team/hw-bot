@@ -588,8 +588,9 @@ async def get_lesson_or_break(
     if bells:
         current_bell = -1, -1
         for bell in bells:
-            if bell[0] < dt.time() and bell[1] > dt.time():
+            if bell[0] < dt.time() < bell[1]:
                 current_bell = bell[0], bell[1]
+                subj['type'] = bell[2]
                 if bell[2] == 0:
                     subj['name'] = bell[3]
                 else:
@@ -599,7 +600,7 @@ async def get_lesson_or_break(
             for i, bell in enumerate(bells):
                 if i < len(bells) - 1:
                     nextbell = bells[i+1]
-                    if bell[1] < dt.time() and nextbell[0] > dt.time():
+                    if bell[1] < dt.time() < nextbell[0]:
                         return (True, bell[1], nextbell[0], schedule[nextbell[2]] if i < len(bells)-1 else None,
                                 __get_diff(nextbell[0], dt.time()))
         else:

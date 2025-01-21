@@ -242,6 +242,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
                      (x if (x := y.get('teacher')) else 'не записан') if (y := now_information[3]) else '')
             .replace('{now_next_lesson}', x['name'] if (x := now_information[3]) else 'нет'
         ) if now_information and any(now_information) else '',
+        'food.name': now_information[3].get('name', '') if now_information and now_information[3] else '',
         'ctx.g': ctx_g or 'ошибка',
     }
     
@@ -580,14 +581,19 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                             now_information = await get_lesson_or_break(
                                               datetime.now(), memb['class_id'], memb['groups_ids'])
                             if now_information:
-                                await __edit(now)
+                                if now_information[3] and now_information[3].get('type') == 0:
+                                    await __edit(now, now.text_food)
+                                else:
+                                    await __edit(now)
                             else:
-                                await callback_query.message.edit_text(
-                                    await format_text(now.text_lessons_ended, callback_query),
-                                    reply_markup=generate_markup(now))
+                                await __edit(now, now.text_lessons_ended)
+                                # await callback_query.message.edit_text(
+                                #     await format_text(now.text_lessons_ended, callback_query),
+                                #     reply_markup=generate_markup(now))
                         else:
-                            await callback_query.message.edit_text(await format_text(now.text_fallback_bells,
-                                                                   callback_query), reply_markup=generate_markup(now))
+                            await __edit(now, now.text_fallback_bells)
+                            # await callback_query.message.edit_text(await format_text(now.text_fallback_bells,
+                            #                                        callback_query), reply_markup=generate_markup(now))
                     except TelegramBadRequest:
                         pass
                     last_minute = datetime.now().minute

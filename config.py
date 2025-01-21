@@ -96,8 +96,10 @@ class now:
                       '👩‍🏫 Учитель: ' + html.bold('{now_teacher}'))
     is_break_info = '➡️ Следующий урок - ' + html.bold('{now_next_lesson}\n')
 
-    text = '{now.time} {now.bell} {now.lesson_or_break} ({now.minutes_to_end} минут до конца)\n{now.info}\n'
+    text = html.bold('({now.time})') + (' {now.bell} {now.lesson_or_break} ({now.minutes_to_end} минут до конца)\n'
+                                        '{now.info}\n')
     text_lessons_ended = '{now.time} ❌ Уроки закончились'
+    text_food = '({now.time}) {now.bell} 🍽️ {food.name} ({now.minutes_to_end} минут до конца)\n'
     text_fallback_bells = '⚠️ Настройте расписание звонков в настройках расписания.'
 
     buttons = home_button_markup
