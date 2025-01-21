@@ -515,15 +515,9 @@ async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str |
 
 
 async def get_schedule_for_day(class_id: int, groups_ids: list[int],
-                               day: date) -> dict[int, dict[str, Any] | None]:
-    # get (even or odd)? week
-    d = day
-    weeks = [start_of_year + timedelta(days=7 * i) for i in range((d - date(d.year, 9, 2)).days // 7 + 1)]
-    for i in holidays:
-        try:
-            weeks.remove(i)
-        except ValueError:
-            pass
+                               d: date) -> dict[int, dict[str, Any] | None]:
+    weeks = [x for i in range((d - start_of_year).days // 7 + 1)
+             if (x := start_of_year + timedelta(days=7*i)) not in holidays]
     is_even = len(weeks) % 2 == 0
 
     subjects = await get_subjects(class_id=class_id) or []
@@ -541,7 +535,7 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int],
         9: None
     }
 
-    if day.weekday() not in [5, 6]: # If not weekend
+    if d.weekday() not in [5, 6]: # If not weekend
         for subj in subjects:
             is_in_groups_ids = subj['groups_ids'] == []
             for i in groups_ids:
@@ -555,7 +549,7 @@ async def get_schedule_for_day(class_id: int, groups_ids: list[int],
                     # 5, 6, 7, 8, 9 - even
                     if is_even:
                         sday -= 5
-                    if sday == day.weekday():
+                    if sday == d.weekday():
                         result[slesson] = subj
     return result
 
