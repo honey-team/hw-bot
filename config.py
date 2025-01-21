@@ -11,9 +11,10 @@ holidays = [
     date(2025, 4, 7),
     date(2025, 5, 26)
 ]
-VERSION = '1.2.2-alpha'
+VERSION = '1.2.2'
 DEVELOPER = '@bleuuu1'
 TGC = 'https://t.me/HoneyTeamC'
+GITHUB = 'https://github.com/honey-team/hw-bot'
 
 class TextAndButtonsDataclass(Protocol):
     text: str
@@ -52,7 +53,8 @@ class info:
     text = (f'{html.bold('Информация о HomeWork')}\n'
             f'💻 Версия: {html.bold(VERSION)}\n'
             f'👨‍💻 Разработчик: {html.bold(DEVELOPER)}\n'
-            f'🌐 Телеграмм канал: {html.bold(TGC)}')
+            f'🌐 Телеграмм канал: {html.link(TGC.replace('https://t.me/', ''), TGC)}\n'
+            f'🐈‍⬛ GitHub: {html.link(GITHUB.replace('https://github.com/', ''), GITHUB)}')
     buttons = [[home_button]]
 
 
