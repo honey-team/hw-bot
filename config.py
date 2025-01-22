@@ -11,7 +11,7 @@ holidays = [
     date(2025, 4, 7),
     date(2025, 5, 26)
 ]
-VERSION = '1.2.2'
+VERSION = '1.2.2_1'
 DEVELOPER = '@bleuuu1'
 TGC = 'https://t.me/HoneyTeamC'
 GITHUB = 'https://github.com/honey-team/hw-bot'
