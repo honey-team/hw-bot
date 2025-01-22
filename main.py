@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import os.path
-import sys
 from datetime import timedelta, datetime
 from os import getenv
 from random import choice
@@ -19,7 +17,8 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     BufferedInputFile,
-    InputMediaDocument
+    InputMediaDocument,
+    ReplyKeyboardRemove
 )
 from aiogram.exceptions import TelegramBadRequest
 from ujson import dumps, loads
@@ -35,7 +34,7 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 
-def generate_markup(dataclass: TextAndButtonsDataclass = None,
+def generate_markup(dataclass: TextDataclass | TextAndButtonsDataclass = None,
                     buttons: list[list[tuple[str, str]]] = None) -> Optional[InlineKeyboardMarkup]:
     try:
         if dataclass:
@@ -250,23 +249,6 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         txt = txt.replace('{' + k + '}', str(v))    
     return txt
 
-# Main page
-@dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
-    logging.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
-    if await get_members(message.from_user.id):
-        h = []
-        for i in holidays:
-            for j in range(7):
-                h.append(i + timedelta(days=j))
-        d = date.today()
-        if d in h or d.weekday() in [5, 6]:
-            await message.answer(await format_text(home.text, message),
-                                 reply_markup=generate_markup(buttons=home.no_classes_buttons))
-        else:
-            await message.answer(await format_text(home.text, message), reply_markup=generate_markup(home))
-    else:
-        await message.answer(await format_text(welcome.text, message), reply_markup=generate_markup(welcome))
 
 w_wc_cc_class_name = []
 w_wc_cc_creator_name = []
@@ -323,13 +305,83 @@ w_set_conf_file = []
 
 now_updating = []
 
+async def _delete_reply_keyboard(message: Message):
+    await (await message.answer('...', reply_markup=ReplyKeyboardRemove())).delete()
+
+# Main page
+@dp.message(CommandStart())
+async def command_start_handler(message: Message) -> None:
+    user_id = message.from_user.id
+    logging.log(logging.INFO, f'user {user_id} sended {message.text!r}')
+
+    # Remove current user from every w_var and delete information about sent data
+    def __remove_user_from_list_if_in(var: list[int]) -> None:
+        if user_id in var:
+            var.remove(user_id)
+    def __remove_user_from_dict_if_in(var: dict[int, Any]) -> None:
+        if user_id in var:
+            del var[user_id]
+    __remove_user_from_list_if_in(w_wc_cc_class_name)
+    __remove_user_from_list_if_in(w_wc_cc_creator_name)
+    __remove_user_from_list_if_in(w_cl_am_member_id)
+    __remove_user_from_list_if_in(w_cl_am_name)
+    __remove_user_from_list_if_in(w_cl_gc_name)
+    __remove_user_from_list_if_in(w_cl_gc_members)
+    __remove_user_from_list_if_in(w_cl_ge_name)
+    __remove_user_from_list_if_in(w_cl_ge_n_name)
+    __remove_user_from_list_if_in(w_cl_ge_m_members)
+    __remove_user_from_list_if_in(w_cl_gd_name)
+    __remove_user_from_list_if_in(w_sch_set_sc_name)
+    __remove_user_from_list_if_in(w_sch_set_sc_groups)
+    __remove_user_from_list_if_in(w_sch_set_sc_schedule)
+    __remove_user_from_list_if_in(w_sch_info_lesson)
+    __remove_user_from_list_if_in(w_sch_set_se_name)
+    __remove_user_from_list_if_in(w_sch_set_se_new_name)
+    __remove_user_from_list_if_in(w_sch_set_se_groups)
+    __remove_user_from_list_if_in(w_sch_set_se_schedule)
+    __remove_user_from_list_if_in(w_sch_set_se_office)
+    __remove_user_from_list_if_in(w_sch_set_se_teacher)
+    __remove_user_from_list_if_in(w_sch_be_bells)
+    __remove_user_from_list_if_in(w_hw_o_name)
+    __remove_user_from_list_if_in(w_hw_oe)
+    __remove_user_from_list_if_in(w_hw_c_name)
+    __remove_user_from_list_if_in(w_set_conf_file)
+    __remove_user_from_list_if_in(now_updating)
+
+    __remove_user_from_dict_if_in(wc_cc_class_name)
+    __remove_user_from_dict_if_in(cl_am_member_id)
+    __remove_user_from_dict_if_in(cl_gc_name)
+    __remove_user_from_dict_if_in(cl_ge_id)
+    __remove_user_from_dict_if_in(sch_set_sc_name)
+    __remove_user_from_dict_if_in(sch_set_sc_groups_ids)
+    __remove_user_from_dict_if_in(current_lesson)
+    __remove_user_from_dict_if_in(sch_set_se_csubj)
+    __remove_user_from_dict_if_in(hw_oe_text)
+    __remove_user_from_dict_if_in(hw_oe_files)
+
+    if await get_members(user_id):
+        await _delete_reply_keyboard(message)
+
+        h = []
+        for i in holidays:
+            for j in range(7):
+                h.append(i + timedelta(days=j))
+        d = date.today()
+        if d in h or d.weekday() in [5, 6]:
+            await message.answer(await format_text(home.text, message),
+                                 reply_markup=generate_markup(buttons=home.no_classes_buttons))
+        else:
+            await message.answer(await format_text(home.text, message), reply_markup=generate_markup(home))
+    else:
+        await message.answer(await format_text(welcome.text, message), reply_markup=generate_markup(welcome))
+
 # Homework
 @dp.callback_query()
 async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     user_id = callback_query.from_user.id
     logging.log(logging.INFO, f'user {user_id} clicked {callback_query.data!r}')
     memb = x[0] if (x := await get_members(user_id)) else None
-    async def __edit(dcls: TextAndButtonsDataclass, text: Optional[str] = None,
+    async def __edit(dcls: TextDataclass | TextAndButtonsDataclass, text: Optional[str] = None,
                      buttons: Optional[list[list[tuple[int, int]]]] = None, **additional):
         try:
             if text is None:
@@ -346,7 +398,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __answer(dcls, text=text, buttons=buttons)
             await callback_query.message.delete()
 
-    async def __answer(dcls: TextAndButtonsDataclass, text = None,
+    async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, text = None,
                        buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
         try:
             if text is None:
@@ -370,6 +422,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         if date(y, 9, 1) <= d < date(y + 1, 6, 1): return d
         if date(y, 9, 1) > d: return date(y, 9, 1)
         return date(y + 1, 6, 1) - timedelta(days=1)
+
+    await _delete_reply_keyboard(callback_query.message)
 
     if callback_query.data != 'now' and user_id in now_updating: now_updating.remove(user_id)
     match callback_query.data:
@@ -680,7 +734,7 @@ async def user_answer_handler(message: Message) -> None:
     # Logging
     user_id = message.from_user.id
     logging.log(logging.INFO, f'user {user_id} sended {message.text!r}')
-    async def __answer(dcls: TextAndButtonsDataclass, **additional_data):
+    async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
 
     async def check_name_for_lines_and_length() -> str | None:
@@ -688,6 +742,8 @@ async def user_answer_handler(message: Message) -> None:
             await message.answer("Имя слишком длинное. Попробуйте выбрать имя меньше 10 символов.")
             return
         return message.text.replace('\n', '')
+
+    await _delete_reply_keyboard(message)
 
     memb = x[0] if (x := await get_members(user_id)) else None
 
@@ -873,8 +929,7 @@ async def user_answer_handler(message: Message) -> None:
         bells = [i.split(' ', 5) for i in message.text.splitlines()]
 
         for b in bells: # sh, sm, eh, em, tp, n
-            for i in range(5):
-                b[i] = int(b[i])
+            b = [int(i) for i in b]
             st = (b[0], b[1])
             et = (b[2], b[3])
             if b[4] == 0:

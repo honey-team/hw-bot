@@ -16,8 +16,10 @@ DEVELOPER = '@bleuuu1'
 TGC = 'https://t.me/HoneyTeamC'
 GITHUB = 'https://github.com/honey-team/hw-bot'
 
-class TextAndButtonsDataclass(Protocol):
+class TextDataclass(Protocol):
     text: str
+
+class TextAndButtonsDataclass(TextDataclass):
     buttons: Optional[list[list[tuple[str, str]]]]
 
 

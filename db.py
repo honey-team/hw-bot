@@ -252,12 +252,12 @@ async def create_group(class_id: int, name: str = ''):
     )
 
 
-async def create_bell(class_id: int, type: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], name: Optional[str] = None,
+async def create_bell(class_id: int, t: Literal[0, 1, 2, 3, 4, 5, 6, 7, 8, 9] | int, name: Optional[str] = None,
                       start_time: tuple[int, int] | list[int] = None, end_time: tuple[int, int] | list[int] = None):
     return await insert_into(
         'bells',
         class_id=class_id,
-        type=type,
+        type=t,
         name=name,
         start_time=dumps(list(start_time)),
         end_time=dumps(list(end_time))
