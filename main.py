@@ -1098,8 +1098,13 @@ async def user_answer_handler(message: Message) -> None:
         if message.document:
             bindata = await bot.download(message.document)
             if bindata and isinstance(x := loads(bindata.read()), dict):
-                await set_conf(memb['class_id'], x)
+                c = await set_conf(memb['class_id'], x)
+                if c == -1:
+                    await message.answer('Возникла ошибка, попробуйте еще раз отправить конфиг.',
+                                         reply_markup=generate_markup(import_not_finded_file))
+                    return
                 await __answer(import2)
+                w_set_conf_file.remove(user_id)
             else:
                 await __answer(import_not_finded_file)
         else:

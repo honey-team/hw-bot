@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, time
 from typing import Any, Literal, Optional, overload
 
 from aiosqlite import connect
-from ujson import loads, dumps
+from ujson import loads, dumps, JSONDecodeError
 
 from config import start_of_year, holidays
 
@@ -653,44 +653,48 @@ async def get_conf(class_id: int) -> dict[str, Any]:
 
     return result
 
-async def set_conf(class_id: int, data: dict[str, Any]) -> None:
-    async def __get_group_ids(__groups_names: list[str]) -> list[int]:
-        groups_ids = []
-        for group_name in __groups_names:
-            groups_ids.append((await get_group(name=group_name))['id'])
-        return groups_ids
+async def set_conf(class_id: int, data: dict[str, Any]) -> int:
+    try:
+        async def __get_group_ids(__groups_names: list[str]) -> list[int]:
+            groups_ids = []
+            for group_name in __groups_names:
+                groups_ids.append((await get_group(name=group_name))['id'])
+            return groups_ids
 
-    # Create groups (if not exists)
-    for group in data['groups']:
-        if not await get_group(name=group['name']):
-            await create_group(class_id, group['name'])
+        # Create groups (if not exists)
+        for group in data['groups']:
+            if not await get_group(name=group['name']):
+                await create_group(class_id, group['name'])
 
-    # Add members (if not exists)
-    for member in data['members']:
-        if not await get_members(member['id']):
-            await create_member(member['id'], class_id, member['name'], await __get_group_ids(member['groups']))
+        # Add members (if not exists)
+        for member in data['members']:
+            if not await get_members(member['id']):
+                await create_member(member['id'], class_id, member['name'], await __get_group_ids(member['groups']))
 
-    # Reset subjects
-    await delete_subjects(class_id=class_id)
-    # Create subjects
-    for subject in data['subjects']:
-        if not await get_subjects(name=subject['name']):
-            await create_subject(
-                class_id,
-                await __get_group_ids(subject['groups']),
-                subject['name'],
-                subject['schedule'],
-                subject['office'],
-                subject['teacher']
-            )
+        # Reset subjects
+        await delete_subjects(class_id=class_id)
+        # Create subjects
+        for subject in data['subjects']:
+            if not await get_subjects(name=subject['name']):
+                await create_subject(
+                    class_id,
+                    await __get_group_ids(subject['groups']),
+                    subject['name'],
+                    subject['schedule'],
+                    subject['office'],
+                    subject['teacher']
+                )
 
-    # Reset bells
-    await delete_bells_schedule(class_id)
-    # Create bells
-    for bell in data['bells']:
-        await create_bell(class_id, bell['lesson'], bell['name'],
-                          [int(i) for i in bell['start_time'].split(':')],
-                          [int(i) for i in bell['end_time'].split(':')])
+        # Reset bells
+        await delete_bells_schedule(class_id)
+        # Create bells
+        for bell in data['bells']:
+            await create_bell(class_id, bell['lesson'], bell['name'],
+                              [int(i) for i in bell['start_time'].split(':')],
+                              [int(i) for i in bell['end_time'].split(':')])
+        return 0
+    except (TypeError, JSONDecodeError):
+        return -1
 
 
 def full_reset():
