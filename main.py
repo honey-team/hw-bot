@@ -503,19 +503,25 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             if memb['role'] == 0: await __delete(); return
             await __edit(cl_settings)
         case 'cl_members':
+            if memb['role'] == 0: await __delete(); return
             await __edit(cl_members)
         case 'cl_add_member':
+            if memb['role'] == 0: await __delete(); return
             await __edit(cl_add_member1)
             w_cl_am_member_id.append(user_id)
         case 'cl_add_member_return':
-            await __edit(cl_members)
             w_cl_am_member_id.remove(user_id)
+            if memb['role'] == 0: await __delete(); return
+            await __edit(cl_members)
         case 'cl_groups':
+            if memb['role'] == 0: await __delete(); return
             await __edit(cl_groups)
         case 'cl_groups_create':
+            if memb['role'] == 0: await __delete(); return
             await __edit(cl_groups_create1)
             w_cl_gc_name.append(user_id)
         case 'cl_groups_edit':
+            if memb['role'] == 0: await __delete(); return
             cl = await get_class((await get_members(user_id))[0]['class_id'])
             await callback_query.message.answer(await format_text(cl_groups_edit1.text, callback_query), reply_markup=ReplyKeyboardMarkup(keyboard=[
                 [KeyboardButton(text=i['name']) for i in (await get_groups_by_ids(cl['groups_ids'])) or []]
@@ -704,14 +710,18 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                     last_minute = datetime.now().minute
                 await asyncio.sleep(1)
         case 'import_export':
+            if memb['role'] == 0: await __delete(); return
             await __edit(import_export)
         case 'import':
+            if memb['role'] == 0: await __delete(); return
             await __edit(import1)
             w_set_conf_file.append(user_id)
         case 'import_cancel':
             w_set_conf_file.remove(user_id)
+            if memb['role'] == 0: await __delete(); return
             await __edit(import_export)
         case 'export':
+            if memb['role'] == 0: await __delete(); return
             data = await get_conf(memb['class_id'])
             exported = BufferedInputFile(bytes(dumps(data, ensure_ascii=False, indent=2), 'utf-8'),
                                           filename=f"{datetime.now().strftime('%d.%m.%Y %H %M')}.json")
