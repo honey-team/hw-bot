@@ -11,8 +11,6 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
     CallbackQuery,
     ReplyKeyboardMarkup,
     KeyboardButton,
@@ -23,34 +21,19 @@ from aiogram.types import (
 from aiogram.exceptions import TelegramBadRequest
 from ujson import dumps, loads
 
+from checks import check_add_member_id
 from config import *
 from db import *
 from db import get_hw_for_day, hw_mark_uncompleted
 from db import get_lesson_or_break
 from logger import logger
+from utils import generate_markup
 
 TOKEN = getenv("HW_TOKEN")
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 
-def generate_markup(dataclass: TextDataclass | TextAndButtonsDataclass = None,
-                    buttons: list[list[tuple[str, str]]] = None) -> Optional[InlineKeyboardMarkup]:
-    try:
-        if dataclass:
-            buttons = dataclass.buttons
-    except AttributeError:
-        pass
-    try:
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text=txt, callback_data=cdata)
-                for txt, cdata in i
-            ]
-            for i in buttons
-        ])
-    except (AttributeError,  TypeError):
-        return None
 
 async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optional[str] = None) -> str:
     user_id = message.from_user.id
@@ -81,7 +64,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             groups_text += '\n'
         for mb in (await get_members(class_id=cl['id'])):
             members_count += 1
-            members_text += mb['name'] + html.code(f' ({mb['id']})\n')
+            members_text += mb['name'] + ' (' + html.code(mb['id']) + ')\n'
         for i, subj in enumerate(await get_subjects(class_id=member['class_id'])):
             gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
             gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
@@ -867,11 +850,7 @@ async def user_answer_handler(message: Message) -> None:
 
     # Add member
     elif user_id in w_cl_am_member_id:
-        try:
-            _id = int(message.text)
-        except ValueError:
-            await message.answer('Пожалуйста, пишите айди участника без лишних символов, кроме цифр.\n' + cl_add_member1.text)
-            return
+        if not (_id := await check_add_member_id(message, memb)): return
         w_cl_am_member_id.remove(user_id)
         cl_am_member_id[user_id] = _id
         await __answer(cl_add_member2)
