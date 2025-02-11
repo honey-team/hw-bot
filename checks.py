@@ -1,7 +1,6 @@
-
-
 __all__ = (
-
+    'check_add_member_id',
+    'check_group_name',
 )
 
 from typing import Any
@@ -9,7 +8,7 @@ from typing import Any
 from aiogram.types import Message
 
 from config import *
-from db import get_members
+from db import get_members, get_group, get_class, get_groups_by_ids
 from utils import generate_markup
 
 
@@ -37,3 +36,16 @@ async def check_add_member_id(message: Message, member: dict[str, Any]) -> int |
         return
 
     return _id
+
+async def check_group_name(message: Message, member: dict[str, Any]) -> str | None:
+    if len(_name := message.text) > 10:
+        await message.answer("Слишком длинно. Попробуйте написать название меньше 11 символов.")
+        return
+    _name = _name.replace('\n', '')
+    _class = await get_class(member['class_id'])
+    _groups = await get_groups_by_ids(_class['groups_ids'])
+    if _name in [i['name'] for i in _groups]:
+        await message.answer('Группа с данным названием уже существует.')
+        return
+
+    return _name

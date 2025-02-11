@@ -21,7 +21,7 @@ from aiogram.types import (
 from aiogram.exceptions import TelegramBadRequest
 from ujson import dumps, loads
 
-from checks import check_add_member_id
+from checks import *
 from config import *
 from db import *
 from db import get_hw_for_day, hw_mark_uncompleted
@@ -866,7 +866,7 @@ async def user_answer_handler(message: Message) -> None:
 
     # Group create
     elif user_id in w_cl_gc_name:
-        if (_name := await check_for_lines_and_length()) is None:
+        if not (_name := await check_group_name(message, memb)):
             return
         w_cl_gc_name.remove(user_id)
         cl_gc_name[user_id] = _name
@@ -896,7 +896,7 @@ async def user_answer_handler(message: Message) -> None:
             await message.answer('Не удалось найти группу с данным названием. Попробуйте еще раз.')
     
     elif user_id in w_cl_ge_n_name:
-        if (_name := await check_for_lines_and_length()) is None:
+        if not (_name := await check_group_name(message, memb)):
             return
         w_cl_ge_n_name.remove(user_id)
         await edit_group(cl_ge_id[user_id], _name)
