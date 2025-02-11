@@ -500,6 +500,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             else:
                 await __edit(welcome)
         case 'cl_settings':
+            if memb['role'] == 0: await __delete(); return
             await __edit(cl_settings)
         case 'cl_members':
             await __edit(cl_members)
