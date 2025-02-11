@@ -93,21 +93,29 @@ class home:
     if_there_isnt_hw = 'На завтра нет домашних заданий'
     if_holiday = 'Завтра нет занятий'
     text = html.bold('👋 {home.hello}, {user_name} ({current_class}{current_group})!\n') + '{home.hw}'
-    no_classes_buttons = [
+    no_classes_basic_user_buttons = [
         [
             hw_button,
             schedule_button
         ],
         [
-            settings_button,
             ('📕 Инфо', 'info')
         ]
     ]
+    no_classes_buttons_admin = [
+        no_classes_basic_user_buttons[0],
+        [settings_button] + no_classes_basic_user_buttons[1]
+    ]
+    basic_user_buttons = [
+        [
+            ('⏰ Сейчас', 'now')
+        ]
+    ] + no_classes_basic_user_buttons
     buttons = [
         [
             ('⏰ Сейчас', 'now')
         ]
-    ] + no_classes_buttons
+    ] + no_classes_buttons_admin
 
 
 class now:
@@ -416,7 +424,7 @@ class hw_complete2:
 
 class schedule:
     text = 'Расписание на {current_day}\n{schedule_text}'
-    buttons = [
+    basic_user_buttons = [
         [
             ('⬅️⬅️', 'schedule_left_week'),
             ('⬅️', 'schedule_left'),
@@ -426,9 +434,13 @@ class schedule:
             ('➡️➡️', 'schedule_right_week')
         ],
         [
-            ('⚙️ Изменить расписание', 'schedule_settings'),
             home_button
         ]
+    ]
+
+    buttons = [
+        basic_user_buttons[0],
+        [('⚙️ Изменить расписание', 'schedule_settings')] + basic_user_buttons[1]
     ]
 
 class schedule_info1:

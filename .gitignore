@@ -167,3 +167,6 @@ tests.py
 
 # Logs
 logs/
+
+# Data
+data.db

@@ -314,6 +314,22 @@ async def command_start_handler(message: Message) -> None:
     user_id = message.from_user.id
     logging.log(logging.INFO, f'user {user_id} sended {message.text!r}')
 
+    async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, text = None,
+                       buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
+        try:
+            if text is None:
+                text = dcls.text
+        except AttributeError: pass
+        try:
+            if buttons is None:
+                buttons = dcls.buttons
+        except AttributeError: pass
+        try:
+            await message.answer(await format_text(text, message, **additional),
+                                                reply_markup=generate_markup(buttons=buttons))
+        except TelegramBadRequest:
+            pass
+
     # Remove current user from every w_var and delete information about sent data
     def __remove_user_from_list_if_in(var: list[int]) -> None:
         if user_id in var:
@@ -359,21 +375,28 @@ async def command_start_handler(message: Message) -> None:
     __remove_user_from_dict_if_in(hw_oe_text)
     __remove_user_from_dict_if_in(hw_oe_files)
 
-    if await get_members(user_id):
+    if members := await get_members(user_id):
+        member = members[0]
         await _delete_reply_keyboard(message)
 
         h = []
         for i in holidays:
             for j in range(7):
                 h.append(i + timedelta(days=j))
+
         d = date.today()
         if d in h or d.weekday() in [5, 6]:
-            await message.answer(await format_text(home.text, message),
-                                 reply_markup=generate_markup(buttons=home.no_classes_buttons))
+            if member['role'] == 0:
+                await __answer(home, buttons=home.no_classes_basic_user_buttons)
+            else:
+                await __answer(home, buttons=home.no_classes_buttons_admin)
         else:
-            await message.answer(await format_text(home.text, message), reply_markup=generate_markup(home))
+            if member['role'] == 0:
+                await __answer(home, buttons=home.basic_user_buttons)
+            else:
+                await __answer(home)
     else:
-        await message.answer(await format_text(welcome.text, message), reply_markup=generate_markup(welcome))
+        await __answer(welcome)
 
 # Homework
 @dp.callback_query()
@@ -403,14 +426,22 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         try:
             if text is None:
                 text = dcls.text
-        except AttributeError: pass
+        except AttributeError:
+            pass
         try:
             if buttons is None:
                 buttons = dcls.buttons
-        except AttributeError: pass
+        except AttributeError:
+            pass
         try:
             await callback_query.message.answer(await format_text(text, callback_query, **additional),
                                                 reply_markup=generate_markup(buttons=buttons))
+        except TelegramBadRequest:
+            pass
+
+    async def __delete():
+        try:
+            await callback_query.message.delete()
         except TelegramBadRequest:
             pass
 
@@ -423,6 +454,12 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         if date(y, 9, 1) > d: return date(y, 9, 1)
         return date(y + 1, 6, 1) - timedelta(days=1)
 
+    async def to_schedule():
+        if memb['role'] == 0:
+            await __edit(schedule, buttons=schedule.basic_user_buttons)
+        else:
+            await __edit(schedule)
+
     await _delete_reply_keyboard(callback_query.message)
 
     if callback_query.data != 'now' and user_id in now_updating: now_updating.remove(user_id)
@@ -430,10 +467,18 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'info':
             await __edit(info)
         case 'wc_create_class':
-            await __edit(wc_create_class1)
-            w_wc_cc_class_name.append(user_id)
+            if user_id in w_wc_cc_class_name + w_wc_cc_creator_name: await __delete(); return
+            if await get_members(user_id):
+                await __edit(home)
+            else:
+                await __answer(wc_create_class1)
+                w_wc_cc_class_name.append(user_id)
         case 'wc_join_class':
-            await __edit(wc_join_class)
+            if user_id in w_wc_cc_class_name + w_wc_cc_creator_name: await __delete(); return
+            if await get_members(user_id):
+                await __edit(home)
+            else:
+                await __edit(wc_join_class)
         case 'home':
             if await get_members(user_id):
                 h = []
@@ -441,10 +486,17 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
                     for j in range(7):
                         h.append(i + timedelta(days=j))
                 d = date.today()
+                print(f'{memb['role']=}')
                 if d in h or d.weekday() in [5, 6]:
-                    await __edit(home, buttons=home.no_classes_buttons)
+                    if memb['role'] == 0:
+                        await __edit(home, buttons=home.no_classes_basic_user_buttons)
+                    else:
+                        await __edit(home, buttons=home.no_classes_buttons_admin)
                 else:
-                    await __edit(home)
+                    if memb['role'] == 0:
+                        await __edit(home, buttons=home.basic_user_buttons)
+                    else:
+                        await __edit(home)
             else:
                 await __edit(welcome)
         case 'cl_settings':
@@ -484,16 +536,16 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'schedule':
             if current_date.get(user_id) is None:
                 current_date[user_id] = date.today()
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_left_week':
             current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=7))
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_left':
             current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=1))
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_today':
             current_date[user_id] = __check_new_day(date.today())
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_info':
             await __edit(schedule_info1)
             await callback_query.message.answer(
@@ -511,10 +563,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(sch_subj_edit2)
         case 'schedule_right':
             current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=1))
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_right_week':
             current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=7))
-            await __edit(schedule)
+            await to_schedule()
         case 'schedule_settings':
             await __edit(schedule_settings)
         case 'sch_subj':
@@ -628,7 +680,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(hw)
         case 'now':
             last_minute = datetime.now().minute - 1
-            now_updating.append(user_id)
+            if user_id not in now_updating:
+                now_updating.append(user_id)
             while True:
                 if user_id not in now_updating: break
                 if datetime.now().minute > last_minute:
@@ -676,16 +729,35 @@ async def hw_command(message: Message) -> None:
 
 @dp.message(Command('sch', ignore_case=True))
 async def sch_command(message: Message) -> None:
-    logging.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
-    if current_date.get(user_id := message.from_user.id) is None:
+    user_id = message.from_user.id
+    logging.log(logging.INFO, f'user {user_id} sended {message.text!r}')
+    if current_date.get(user_id) is None:
         current_date[user_id] = date.today()
-    await message.answer(await format_text(schedule.text, message), reply_markup=generate_markup(schedule))
 
+    async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, text = None,
+                       buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
+        try:
+            if text is None:
+                text = dcls.text
+        except AttributeError: pass
+        try:
+            if buttons is None:
+                buttons = dcls.buttons
+        except AttributeError: pass
+        try:
+            await message.answer(await format_text(text, message, **additional),
+                                                reply_markup=generate_markup(buttons=buttons))
+        except TelegramBadRequest:
+            pass
 
-@dp.message(Command('settings', ignore_case=True))
-async def settings_command(message: Message) -> None:
-    logging.log(logging.INFO, f'user {message.from_user.id} sended {message.text!r}')
-    await message.answer(await format_text(cl_settings.text, message), reply_markup=generate_markup(cl_settings))
+    member = x[0] if (x := await get_members(user_id)) else None
+
+    if member is None: return
+
+    if member['role'] == 0:
+        await __answer(schedule, buttons=schedule.basic_user_buttons)
+    else:
+        await __answer(schedule)
 
 
 @dp.message(Command('now', ignore_case=True))
@@ -705,10 +777,9 @@ async def now_command(message: Message) -> None:
         else:
             now_mes = await message.answer(await format_text(now.text_fallback_bells, message),
                                            reply_markup=generate_markup(now))
-        if user_id in now_updating:
-            return
         last_minute = datetime.now().minute
-        now_updating.append(user_id)
+        if user_id not in now_updating:
+            now_updating.append(user_id)
         while True:
             if message.from_user.id not in now_updating: break
             if datetime.now().minute > last_minute:
@@ -737,11 +808,24 @@ async def user_answer_handler(message: Message) -> None:
     async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, **additional_data):
         await message.answer(await format_text(dcls.text, message, **additional_data), reply_markup=generate_markup(dcls))
 
-    async def check_name_for_lines_and_length() -> str | None:
+    async def check_for_lines_and_length() -> str | None:
         if len(message.text) > 10:
-            await message.answer("Имя слишком длинное. Попробуйте выбрать имя меньше 10 символов.")
+            await message.answer("Слишком длинно. Попробуйте написать название меньше 10 символов.")
             return
         return message.text.replace('\n', '')
+
+    async def check_schedule() -> str | None:
+        _schedule = message.text.replace(' ', '').replace('\n', '')
+        _schedule = ''.join(set([_schedule[i:i+2] for i in range(0, len(_schedule), 2)]))
+        if not (len(_schedule) % 2 == 0
+            and len(_schedule) <= 9 * 5 * 4
+            and _schedule.isdigit()
+            and all([int(i) > 0 for i in _schedule[1::2]])
+            ):
+            await message.answer('Неправильный формат расписания. Попробуйте еще раз')
+            return
+        return _schedule
+
 
     await _delete_reply_keyboard(message)
 
@@ -749,6 +833,8 @@ async def user_answer_handler(message: Message) -> None:
 
     # Create class
     if user_id in w_wc_cc_class_name:
+        if await get_members(user_id): w_wc_cc_class_name.remove(user_id); return
+
         if len(message.text) > 10:
             await message.answer("Ваше название класса слишком длинное."
                                  "Попробуйте выбрать название класса меньше 10 символов")
@@ -759,11 +845,12 @@ async def user_answer_handler(message: Message) -> None:
         await __answer(wc_create_class2)
         w_wc_cc_creator_name.append(user_id)
     elif user_id in w_wc_cc_creator_name:
-        if (_name := await check_name_for_lines_and_length()) is None:
+        if await get_members(user_id): w_wc_cc_creator_name.remove(user_id); return
+        if (_name := await check_for_lines_and_length()) is None:
             return
         w_wc_cc_creator_name.remove(user_id)
         cl = await create_class(wc_cc_class_name[user_id])
-        await create_member(user_id, cl['id'], _name)
+        await create_member(user_id, cl['id'], _name, role=2)
         await __answer(wc_create_class3)
     #
 
@@ -779,7 +866,7 @@ async def user_answer_handler(message: Message) -> None:
         await __answer(cl_add_member2)
         w_cl_am_name.append(user_id)
     elif user_id in w_cl_am_name:
-        if (_name := await check_name_for_lines_and_length()) is None:
+        if (_name := await check_for_lines_and_length()) is None:
             return
         w_cl_am_name.remove(user_id)
         await create_member(cl_am_member_id[user_id], memb['class_id'], _name)
@@ -789,7 +876,7 @@ async def user_answer_handler(message: Message) -> None:
 
     # Group create
     elif user_id in w_cl_gc_name:
-        if (_name := await check_name_for_lines_and_length()) is None:
+        if (_name := await check_for_lines_and_length()) is None:
             return
         w_cl_gc_name.remove(user_id)
         cl_gc_name[user_id] = _name
@@ -819,7 +906,7 @@ async def user_answer_handler(message: Message) -> None:
             await message.answer('Не удалось найти группу с данным названием. Попробуйте еще раз.')
     
     elif user_id in w_cl_ge_n_name:
-        if (_name := await check_name_for_lines_and_length()) is None:
+        if (_name := await check_for_lines_and_length()) is None:
             return
         w_cl_ge_n_name.remove(user_id)
         await edit_group(cl_ge_id[user_id], _name)
@@ -853,7 +940,7 @@ async def user_answer_handler(message: Message) -> None:
     
     # Schedule settings subjects create
     elif user_id in w_sch_set_sc_name:
-        if (_name := await check_name_for_lines_and_length()) is None:
+        if (_name := await check_for_lines_and_length()) is None:
             return
         if (await get_subjects(name=_name, class_id=memb['class_id'])) or _name in sch_set_sc_name.values():
             await message.answer('Предмет с таким названием уже есть, выберите уникальное название.')
@@ -869,16 +956,10 @@ async def user_answer_handler(message: Message) -> None:
         w_sch_set_sc_schedule.append(user_id)
     elif user_id in w_sch_set_sc_schedule:
         # Check schedule:
-        _schedule = message.text.replace(' ', '').replace('\n', '')
-        if not (len(_schedule) % 2 == 0
-                and len(_schedule) <= 9*5*4
-                and _schedule.isdigit()
-                and all([int(i) > 0 for i in _schedule[1::2]])
-        ):
-            await message.answer('Неправильный формат расписания. Попробуйте еще раз')
+        if (_schedule := await check_schedule()) is None:
             return
         w_sch_set_sc_schedule.remove(user_id)
-        await create_subject(memb['class_id'], sch_set_sc_groups_ids[user_id], sch_set_sc_name[user_id], message.text)
+        await create_subject(memb['class_id'], sch_set_sc_groups_ids[user_id], sch_set_sc_name[user_id], _schedule)
         await __answer(sch_subj_create4)
         del sch_set_sc_groups_ids[user_id]
         del sch_set_sc_name[user_id]
@@ -895,24 +976,32 @@ async def user_answer_handler(message: Message) -> None:
             await message.answer('Не найдено такого предмета с данным названием')
 
     elif user_id in w_sch_set_se_new_name:
-        await edit_subject(sch_set_se_csubj[user_id]['id'], name=message.text)
+        if (_name := await check_for_lines_and_length()) is None:
+            return
+        await edit_subject(sch_set_se_csubj[user_id]['id'], name=_name)
         await __answer(sch_subj_edit_name2)
         w_sch_set_se_new_name.remove(user_id)
     elif user_id in w_sch_set_se_groups:
         await edit_subject(sch_set_se_csubj[user_id]['id'],
-                           groups_ids=[(await get_group(name=i))['id'] for i in message.text.splitlines()])
+                           groups_ids=[x['id'] for i in message.text.splitlines() if (x := await get_group(name=i))])
         await __answer(sch_subj_edit_groups2)
         w_sch_set_se_groups.remove(user_id)
     elif user_id in w_sch_set_se_schedule:
-        await edit_subject(sch_set_se_csubj[user_id]['id'], schedule=message.text)
+        if (_schedule := await check_schedule()) is None:
+            return
+        await edit_subject(sch_set_se_csubj[user_id]['id'], schedule=_schedule)
         await __answer(sch_subj_edit_schedule2)
         w_sch_set_se_schedule.remove(user_id)
     elif user_id in w_sch_set_se_office:
-        await edit_subject(sch_set_se_csubj[user_id]['id'], office=message.text)
+        if (_name := await check_for_lines_and_length()) is None:
+            return
+        await edit_subject(sch_set_se_csubj[user_id]['id'], office=_name)
         await __answer(sch_subj_edit_office2)
         w_sch_set_se_office.remove(user_id)
     elif user_id in w_sch_set_se_teacher:
-        await edit_subject(sch_set_se_csubj[user_id]['id'], teacher=message.text)
+        if (_name := await check_for_lines_and_length()) is None:
+            return
+        await edit_subject(sch_set_se_csubj[user_id]['id'], teacher=_name)
         await __answer(sch_subj_edit_teacher2)
         w_sch_set_se_teacher.remove(user_id)
     #

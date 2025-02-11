@@ -138,7 +138,8 @@ async def init_members():
         'id int',
         'class_id int',
         'name text',
-        'groups_ids text'
+        'groups_ids text',
+        'role int' # 0 - basic user, 1 - admin, 2 - owner
     )
 
 
@@ -212,7 +213,7 @@ async def init_all():
 #
 
 # Create
-async def create_member(user_id: int, class_id: int, name: str, groups_ids: Optional[list[int]] = None):
+async def create_member(user_id: int, class_id: int, name: str, groups_ids: Optional[list[int]] = None, role: int = 0):
     if groups_ids is None:
         groups_ids = []
     return await insert_into(
@@ -220,7 +221,8 @@ async def create_member(user_id: int, class_id: int, name: str, groups_ids: Opti
         id=user_id,
         class_id=class_id,
         name=name,
-        groups_ids=dumps(groups_ids)
+        groups_ids=dumps(groups_ids),
+        role=role
     )
 
 
@@ -294,12 +296,13 @@ async def create_hw(subject_id: int, text: Optional[str] = None, d: date = None,
 
 # Get
 async def get_members(user_id: Optional[int] = None, class_id: Optional[int] = None, name: Optional[str] = None,
-                      groups_ids: Optional[list[int]] = None):
+                      groups_ids: Optional[list[int]] = None, role: Optional[int] = None):
     m = await get_all_by('members', where(
         id=user_id,
         class_id=class_id,
         name=name,
-        groups_ids=dumps(groups_ids) if groups_ids is not None else None
+        groups_ids=dumps(groups_ids) if groups_ids is not None else None,
+        role=role
     ))
     for i in m:
         i['groups_ids'] = loads(i['groups_ids'])
@@ -386,10 +389,12 @@ async def get_hw(hw_id: Optional[int] = None, subject_id: Optional[int] = None, 
 #
 
 # Edit
-async def edit_member(user_id: int, name: Optional[str] = None, groups_ids: Optional[list[int]] = None):
+async def edit_member(user_id: int, name: Optional[str] = None, groups_ids: Optional[list[int]] = None,
+                      role: Optional[int] = None):
     await update('members', values(
         name=name,
-        groups_ids=dumps(groups_ids) if groups_ids is not None else None
+        groups_ids=dumps(groups_ids) if groups_ids is not None else None,
+        role=role
     ), where(id=user_id))
 
 
