@@ -3,8 +3,9 @@ from typing import Optional, Protocol
 from datetime import date
 from aiogram import html
 
-start_of_year = date(2024, 9, 2)
-holidays = [
+START_OF_YEAR = date(2024, 9, 2)
+END_OF_YEAR = date(2025, 6, 1)
+HOLIDAYS = [
     date(2024, 10, 28),
     date(2024, 12, 30),
     date(2025, 1, 6),
@@ -35,21 +36,16 @@ settings_button = ('⚙️ Настройки', 'cl_settings')
 hw_button = ('📆 ДЗ', 'hw')
 schedule_button = ('🗓️ Расписание', 'schedule')
 
-home_button_markup = [
-    [
-        home_button,
-    ],
-]
+home_button_markup = [[home_button]]
 
 sch_subj_edit_markup = [
-    [
-        (back_button_text, 'sch_info_edit')
-    ],
-    [
-        schedule_button,
-        home_button
-    ]
+    [ (back_button_text, 'sch_info_edit') ],
+    [ schedule_button, home_button ]
 ]
+
+class Emojies:
+    admin = '👮'
+    owner = '👑'
 
 class info:
     text = (f'{html.bold('Информация о HomeWork')}\n'
@@ -424,7 +420,7 @@ class hw_complete2:
 
 class schedule:
     text = 'Расписание на {current_day}\n{schedule_text}'
-    basic_user_buttons = [
+    buttons = [
         [
             ('⬅️⬅️', 'schedule_left_week'),
             ('⬅️', 'schedule_left'),
@@ -436,11 +432,6 @@ class schedule:
         [
             home_button
         ]
-    ]
-
-    buttons = [
-        basic_user_buttons[0],
-        [('⚙️ Изменить расписание', 'schedule_settings')] + basic_user_buttons[1]
     ]
 
 class schedule_info1:

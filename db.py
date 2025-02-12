@@ -5,7 +5,7 @@ from typing import Any, Literal, Optional, overload
 from aiosqlite import connect
 from ujson import loads, dumps, JSONDecodeError
 
-from config import start_of_year, holidays
+from config import START_OF_YEAR, HOLIDAYS
 
 __all__ = (
     'init_all',
@@ -521,8 +521,8 @@ async def get_bells_schedule(class_id: int) -> list[tuple[time, time, int, str |
 
 async def get_schedule_for_day(class_id: int, groups_ids: list[int],
                                d: date) -> dict[int, dict[str, Any] | None]:
-    weeks = [x for i in range((d - start_of_year).days // 7 + 1)
-             if (x := start_of_year + timedelta(days=7*i)) not in holidays]
+    weeks = [x for i in range((d - START_OF_YEAR).days // 7 + 1)
+             if (x := START_OF_YEAR + timedelta(days=7 * i)) not in HOLIDAYS]
     is_even = len(weeks) % 2 == 0
 
     subjects = await get_subjects(class_id=class_id) or []

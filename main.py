@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pprint
 from datetime import timedelta, datetime
 from os import getenv
 from random import choice
@@ -64,7 +65,11 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
             groups_text += '\n'
         for mb in (await get_members(class_id=cl['id'])):
             members_count += 1
-            members_text += mb['name'] + ' (' + html.code(mb['id']) + ')\n'
+            members_text += mb['name'] + ' (' + html.code(mb['id']) + ')'
+
+            if mb['role'] == 1: members_text += f' {Emojies.admin}'
+            elif mb['role'] == 2: members_text += f' {Emojies.owner}'
+            members_text += '\n'
         for i, subj in enumerate(await get_subjects(class_id=member['class_id'])):
             gr_names = [(await get_group(i))['name'] for i in subj['groups_ids']]
             gr_names_text = f' ({', '.join(gr_names)})' if gr_names else ''
@@ -103,7 +108,7 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         
         h = []
         
-        for i in holidays:
+        for i in HOLIDAYS:
             for j in range(7):
                 h.append(i + timedelta(days=j))
         
@@ -227,9 +232,9 @@ async def format_text(txt: str, message: Message | CallbackQuery, ctx_g: Optiona
         'food.name': now_information[3].get('name', '') if now_information and now_information[3] else '',
         'ctx.g': ctx_g or 'ошибка',
     }
-    
+
     for k, v in general_info.items():
-        txt = txt.replace('{' + k + '}', str(v))    
+        txt = txt.replace('{' + k + '}', str(v))
     return txt
 
 
@@ -363,7 +368,7 @@ async def command_start_handler(message: Message) -> None:
         await _delete_reply_keyboard(message)
 
         h = []
-        for i in holidays:
+        for i in HOLIDAYS:
             for j in range(7):
                 h.append(i + timedelta(days=j))
 
@@ -429,19 +434,9 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             pass
 
     def __check_new_day(d: date):
-        if d.month <= 6:
-            y = d.year - 1
-        else:
-            y = d.year
-        if date(y, 9, 1) <= d < date(y + 1, 6, 1): return d
-        if date(y, 9, 1) > d: return date(y, 9, 1)
-        return date(y + 1, 6, 1) - timedelta(days=1)
-
-    async def to_schedule():
-        if memb['role'] == 0:
-            await __edit(schedule, buttons=schedule.basic_user_buttons)
-        else:
-            await __edit(schedule)
+        if START_OF_YEAR <= d < END_OF_YEAR: return d
+        if START_OF_YEAR > d: return START_OF_YEAR
+        return END_OF_YEAR - timedelta(days=1)
 
     await _delete_reply_keyboard(callback_query.message)
 
@@ -465,7 +460,7 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'home':
             if await get_members(user_id):
                 h = []
-                for i in holidays:
+                for i in HOLIDAYS:
                     for j in range(7):
                         h.append(i + timedelta(days=j))
                 d = date.today()
@@ -526,16 +521,16 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
         case 'schedule':
             if current_date.get(user_id) is None:
                 current_date[user_id] = date.today()
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_left_week':
             current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=7))
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_left':
             current_date[user_id] = __check_new_day(current_date[user_id] - timedelta(days=1))
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_today':
             current_date[user_id] = __check_new_day(date.today())
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_info':
             await __edit(schedule_info1)
             await callback_query.message.answer(
@@ -553,10 +548,10 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             await __edit(sch_subj_edit2)
         case 'schedule_right':
             current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=1))
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_right_week':
             current_date[user_id] = __check_new_day(current_date[user_id] + timedelta(days=7))
-            await to_schedule()
+            await __edit(schedule)
         case 'schedule_settings':
             await __edit(schedule_settings)
         case 'sch_subj':
