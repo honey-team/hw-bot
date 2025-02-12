@@ -1,5 +1,6 @@
 __all__ = (
     'check_add_member_id',
+    'check_member_name',
     'check_group_name',
 )
 
@@ -37,9 +38,19 @@ async def check_add_member_id(message: Message, member: dict[str, Any]) -> int |
 
     return _id
 
+async def check_member_name(message: Message, member: dict[str, Any]) -> str | None:
+    if len(_name := message.text) > 10:
+        await message.answer("Имя слишком длинное. Попробуйте написать меньше 11 символов.")
+        return
+    _name = _name.replace('\n', '')
+    if await get_members(class_id=member['class_id'], name=_name):
+        await message.answer('Участник класса с таким именем уже существует. Попробуйте другое имя.')
+        return
+    return _name
+
 async def check_group_name(message: Message, member: dict[str, Any]) -> str | None:
     if len(_name := message.text) > 10:
-        await message.answer("Слишком длинно. Попробуйте написать название меньше 11 символов.")
+        await message.answer("Название группы слишком длинное. Попробуйте написать меньше 11 символов.")
         return
     _name = _name.replace('\n', '')
     _class = await get_class(member['class_id'])

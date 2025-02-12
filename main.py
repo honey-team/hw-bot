@@ -402,9 +402,8 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
             if buttons is None:
                 buttons = dcls.buttons
         except AttributeError: pass
-        try:
-            await callback_query.message.edit_text(await format_text(text, callback_query, **additional),
-                                                   reply_markup=generate_markup(buttons=buttons))
+        try: await callback_query.message.edit_text(await format_text(text, callback_query, **additional),
+                                                    reply_markup=generate_markup(buttons=buttons))
         except TelegramBadRequest:
             await __answer(dcls, text=text, buttons=buttons)
             await callback_query.message.delete()
@@ -412,26 +411,20 @@ async def callback_query_handler(callback_query: CallbackQuery) -> Any:
     async def __answer(dcls: TextDataclass | TextAndButtonsDataclass, text = None,
                        buttons: Optional[list[list[tuple[int, int]]]] = None,**additional):
         try:
-            if text is None:
-                text = dcls.text
-        except AttributeError:
-            pass
+            if text is None: text = dcls.text
+        except AttributeError: pass
+
         try:
-            if buttons is None:
-                buttons = dcls.buttons
-        except AttributeError:
-            pass
-        try:
-            await callback_query.message.answer(await format_text(text, callback_query, **additional),
-                                                reply_markup=generate_markup(buttons=buttons))
-        except TelegramBadRequest:
-            pass
+            if buttons is None: buttons = dcls.buttons
+        except AttributeError: pass
+
+        try: await callback_query.message.answer(await format_text(text, callback_query, **additional),
+                                                 reply_markup=generate_markup(buttons=buttons))
+        except TelegramBadRequest: pass
 
     async def __delete():
-        try:
-            await callback_query.message.delete()
-        except TelegramBadRequest:
-            pass
+        try: await callback_query.message.delete()
+        except TelegramBadRequest: pass
 
     def __check_new_day(d: date):
         if START_OF_YEAR <= d < END_OF_YEAR: return d
@@ -851,8 +844,7 @@ async def user_answer_handler(message: Message) -> None:
         await __answer(cl_add_member2)
         w_cl_am_name.append(user_id)
     elif user_id in w_cl_am_name:
-        if (_name := await check_for_lines_and_length()) is None:
-            return
+        if not (_name := await check_member_name(message, memb)): return
         w_cl_am_name.remove(user_id)
         await create_member(cl_am_member_id[user_id], memb['class_id'], _name)
         await __answer(cl_add_member3)
