@@ -3,8 +3,9 @@ from typing import Optional, Protocol
 from datetime import date
 from aiogram import html
 
-start_of_year = date(2024, 9, 2)
-holidays = [
+START_OF_YEAR = date(2024, 9, 2)
+END_OF_YEAR = date(2025, 6, 1)
+HOLIDAYS = [
     date(2024, 10, 28),
     date(2024, 12, 30),
     date(2025, 1, 6),
@@ -35,21 +36,16 @@ settings_button = ('⚙️ Настройки', 'cl_settings')
 hw_button = ('📆 ДЗ', 'hw')
 schedule_button = ('🗓️ Расписание', 'schedule')
 
-home_button_markup = [
-    [
-        home_button,
-    ],
-]
+home_button_markup = [[home_button]]
 
 sch_subj_edit_markup = [
-    [
-        (back_button_text, 'sch_info_edit')
-    ],
-    [
-        schedule_button,
-        home_button
-    ]
+    [ (back_button_text, 'sch_info_edit') ],
+    [ schedule_button, home_button ]
 ]
+
+class Emojies:
+    admin = '👮'
+    owner = '👑'
 
 class info:
     text = (f'{html.bold('Информация о HomeWork')}\n'
@@ -93,21 +89,29 @@ class home:
     if_there_isnt_hw = 'На завтра нет домашних заданий'
     if_holiday = 'Завтра нет занятий'
     text = html.bold('👋 {home.hello}, {user_name} ({current_class}{current_group})!\n') + '{home.hw}'
-    no_classes_buttons = [
+    no_classes_basic_user_buttons = [
         [
             hw_button,
             schedule_button
         ],
         [
-            settings_button,
             ('📕 Инфо', 'info')
         ]
     ]
+    no_classes_buttons_admin = [
+        no_classes_basic_user_buttons[0],
+        [settings_button] + no_classes_basic_user_buttons[1]
+    ]
+    basic_user_buttons = [
+        [
+            ('⏰ Сейчас', 'now')
+        ]
+    ] + no_classes_basic_user_buttons
     buttons = [
         [
             ('⏰ Сейчас', 'now')
         ]
-    ] + no_classes_buttons
+    ] + no_classes_buttons_admin
 
 
 class now:
@@ -426,7 +430,6 @@ class schedule:
             ('➡️➡️', 'schedule_right_week')
         ],
         [
-            ('⚙️ Изменить расписание', 'schedule_settings'),
             home_button
         ]
     ]
